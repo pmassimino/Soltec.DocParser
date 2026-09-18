@@ -48,7 +48,7 @@ namespace Soltec.DocParser.Endpoints
 
                 var primera = paginas[0];
 
-                Soltec.DocParser.Models.FacturaCompra resultado;
+                Soltec.DocParser.Models.Factura resultado;
                 if (FacturaCompraParser.EsFormatoArca(primera.LineText))
                     resultado = FacturaCompraParser.Parse(primera.LineText, primera.Words, tenant.Cuit);
                 else if (SaeFacturaParser.EsFormatoSae(primera.LineText))

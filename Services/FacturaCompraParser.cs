@@ -62,9 +62,9 @@ namespace Soltec.DocParser.Services
                 && Regex.IsMatch(text, @"C[oó]digo Producto\s*/\s*Servicio");
         }
 
-        public static FacturaCompra Parse(string lineText, List<Word> words, string empresaCuit)
+        public static Factura Parse(string lineText, List<Word> words, string empresaCuit)
         {
-            var result = new FacturaCompra();
+            var result = new Factura();
 
             string text = Regex.Replace(lineText, @"\s+", " ").Trim();
 
@@ -222,7 +222,7 @@ namespace Soltec.DocParser.Services
             return result;
         }
 
-        static void ExtraerItems(List<Word> words, FacturaCompra result)
+        static void ExtraerItems(List<Word> words, Factura result)
         {
             var lines = PdfPigExtraction.GroupIntoLines(words, 3.0);
 

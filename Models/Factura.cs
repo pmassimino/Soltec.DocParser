@@ -14,7 +14,7 @@ namespace Soltec.DocParser.Models
         public decimal SubtotalConIva { get; set; }
     }
 
-    public class FacturaCompra
+    public class Factura
     {
         public string TipoComprobante { get; set; } = "";
         public string CodigoComprobante { get; set; } = "";

@@ -66,9 +66,9 @@ namespace Soltec.DocParser.Services
             return (tieneCliente || tieneSenores) && tieneTabla && tieneCae;
         }
 
-        public static FacturaCompra Parse(string lineText, List<Word> words, string empresaCuit)
+        public static Factura Parse(string lineText, List<Word> words, string empresaCuit)
         {
-            var result = new FacturaCompra();
+            var result = new Factura();
             string text = Regex.Replace(lineText, @"\s+", " ").Trim();
 
             bool esVariantePlana = Regex.IsMatch(text, @"\bCliente\b") && Regex.IsMatch(text, @"C\.U\.I\.T");
@@ -162,7 +162,7 @@ namespace Soltec.DocParser.Services
             return result;
         }
 
-        static void ExtraerItemsYTotales(string text, List<Word> words, FacturaCompra result)
+        static void ExtraerItemsYTotales(string text, List<Word> words, Factura result)
         {
             var lines = PdfPigExtraction.GroupIntoLines(words, 3.0);
 
@@ -249,7 +249,7 @@ namespace Soltec.DocParser.Services
             ExtraerTotales(text, words, totalesLabelLine, result);
         }
 
-        static void ExtraerTotales(string text, List<Word> words, List<Word>? totalesLabelLine, FacturaCompra result)
+        static void ExtraerTotales(string text, List<Word> words, List<Word>? totalesLabelLine, Factura result)
         {
             // Variante "en línea": cada etiqueta y su valor comparten renglón, así que quedan
             // adyacentes en el texto reconstruido (ver Union Agrícola).
