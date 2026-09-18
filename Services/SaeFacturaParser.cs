@@ -281,12 +281,12 @@ namespace Soltec.DocParser.Services
             else result.Ivas.Add(new ImporteConId { Id = id, Importe = importe });
         }
 
-        static void AgregarPercepcion(Factura result, string id, decimal importe)
+        static void AgregarOtroTributo(Factura result, string id, decimal importe)
         {
             if (importe == 0) return;
-            var existente = result.Percepciones.FirstOrDefault(p => p.Id == id);
+            var existente = result.OtrosTributos.FirstOrDefault(p => p.Id == id);
             if (existente != null) existente.Importe += importe;
-            else result.Percepciones.Add(new ImporteConId { Id = id, Importe = importe });
+            else result.OtrosTributos.Add(new ImporteConId { Id = id, Importe = importe });
         }
 
         static void ExtraerTotales(string text, List<Word> words, List<Word>? totalesLabelLine, Factura result)
@@ -305,13 +305,13 @@ namespace Soltec.DocParser.Services
                     AgregarIva(result, m.Groups[1].Value, ParseNumeroOZero(m.Groups[2].Value));
 
                 var mDesc = Regex.Match(text, @"\bDesc\.\s+(" + NUM + ")");
-                if (mDesc.Success) AgregarPercepcion(result, "Desc", ParseNumeroOZero(mDesc.Groups[1].Value));
+                if (mDesc.Success) AgregarOtroTributo(result, "Desc", ParseNumeroOZero(mDesc.Groups[1].Value));
                 var mPerc = Regex.Match(text, @"(?:Percepci[oó]n:|Perc\.)\s+(" + NUM + ")");
-                if (mPerc.Success) AgregarPercepcion(result, "Perc", ParseNumeroOZero(mPerc.Groups[1].Value));
+                if (mPerc.Success) AgregarOtroTributo(result, "Perc", ParseNumeroOZero(mPerc.Groups[1].Value));
                 var mImp = Regex.Match(text, @"\bImpuestos\s+(" + NUM + ")");
-                if (mImp.Success) AgregarPercepcion(result, "Impuestos", ParseNumeroOZero(mImp.Groups[1].Value));
+                if (mImp.Success) AgregarOtroTributo(result, "Impuestos", ParseNumeroOZero(mImp.Groups[1].Value));
                 var mNg = Regex.Match(text, @"\bN\.G\s+(" + NUM + ")");
-                if (mNg.Success) AgregarPercepcion(result, "NoGravado", ParseNumeroOZero(mNg.Groups[1].Value));
+                if (mNg.Success) AgregarOtroTributo(result, "NoGravado", ParseNumeroOZero(mNg.Groups[1].Value));
 
                 AvisarSiHayDiferenciaSinExplicar(result);
                 return;
@@ -385,10 +385,10 @@ namespace Soltec.DocParser.Services
                     if (columnas[i] == "SubTotal1") result.Subtotal = valor;
                     else if (columnas[i] == "Total") result.ImporteTotal = valor;
                     else if (columnas[i].StartsWith("Iva:")) AgregarIva(result, columnas[i].Substring(4), valor);
-                    else if (columnas[i] == "Desc.") AgregarPercepcion(result, "Desc", valor);
-                    else if (columnas[i] == "Perc.") AgregarPercepcion(result, "Perc", valor);
-                    else if (columnas[i] == "N.G") AgregarPercepcion(result, "NoGravado", valor);
-                    else if (columnas[i] == "Impuestos") AgregarPercepcion(result, "Impuestos", valor);
+                    else if (columnas[i] == "Desc.") AgregarOtroTributo(result, "Desc", valor);
+                    else if (columnas[i] == "Perc.") AgregarOtroTributo(result, "Perc", valor);
+                    else if (columnas[i] == "N.G") AgregarOtroTributo(result, "NoGravado", valor);
+                    else if (columnas[i] == "Impuestos") AgregarOtroTributo(result, "Impuestos", valor);
                 }
 
                 result.ImporteNetoGravado = result.Subtotal;
@@ -399,14 +399,14 @@ namespace Soltec.DocParser.Services
             result.Advertencias.Add("No se pudieron extraer los totales del comprobante.");
         }
 
-        // Si después de sumar Subtotal + Ivas + Percepciones sigue sin cerrar contra el Total,
+        // Si después de sumar Subtotal + Ivas + OtrosTributos sigue sin cerrar contra el Total,
         // hay algo que ninguna de las columnas conocidas explica -se avisa en vez de dejarlo
         // invisible, pero sin inventar en qué columna iría.
         static void AvisarSiHayDiferenciaSinExplicar(Factura result)
         {
-            decimal resto = result.ImporteTotal - result.Subtotal - result.ImporteIva - result.Percepciones.Sum(p => p.Importe);
+            decimal resto = result.ImporteTotal - result.Subtotal - result.ImporteIva - result.TotalOtrosTributos;
             if (Math.Abs(resto) >= 0.01m)
-                result.Advertencias.Add($"Quedan ${resto:F2} del total sin explicar por Subtotal + IVA + Percepciones; revisar manualmente.");
+                result.Advertencias.Add($"Quedan ${resto:F2} del total sin explicar por Subtotal + IVA + OtrosTributos; revisar manualmente.");
         }
     }
 }

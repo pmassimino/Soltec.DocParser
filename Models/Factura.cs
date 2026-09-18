@@ -60,10 +60,11 @@ namespace Soltec.DocParser.Models
         // Percepciones/impuestos/otros importes del comprobante que no son IVA (Percepción IB,
         // Percepción IVA, Impuesto Interno, "No Gravado", etc.), cada uno con su Id tal como lo
         // llama el comprobante.
-        public List<ImporteConId> Percepciones { get; set; } = new();
+        public List<ImporteConId> OtrosTributos { get; set; } = new();
 
-        // Suma de Ivas, para no tener que recorrer la lista cada vez que solo hace falta el total.
+        // Sumas de las listas, para no tener que recorrerlas cada vez que solo hace falta el total.
         public decimal ImporteIva => Ivas.Sum(i => i.Importe);
+        public decimal TotalOtrosTributos => OtrosTributos.Sum(o => o.Importe);
         public decimal ImporteTotal { get; set; }
 
         public string Cae { get; set; } = "";

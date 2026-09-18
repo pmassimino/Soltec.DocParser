@@ -214,7 +214,7 @@ namespace Soltec.DocParser.Services
             AgregarIva("IVA0", "IVA 0%");
 
             var otrosTributos = GetImporte("Importe Otros Tributos", itemsSection);
-            if (otrosTributos != 0) result.Percepciones.Add(new ImporteConId { Id = "OtrosTributos", Importe = otrosTributos });
+            if (otrosTributos != 0) result.OtrosTributos.Add(new ImporteConId { Id = "OtrosTributos", Importe = otrosTributos });
 
             result.ImporteTotal = GetImporte("Importe Total", itemsSection);
 
