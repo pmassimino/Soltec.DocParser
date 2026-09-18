@@ -245,9 +245,10 @@ namespace Soltec.DocParser.Services
                         Subtotal = ParseNumeroOZero(porColumna.GetValueOrDefault("Importe")),
                     };
 
-                    // Salvaguarda: sin cantidad ni importe es un renglón fantasma (resto de una
-                    // descripción envuelta), no un ítem real.
-                    if (detalle.Cantidad == 0 && detalle.Subtotal == 0) continue;
+                    // Salvaguarda: sin importe no es un ítem real -puede ser el resto de una
+                    // descripción envuelta, o un número suelto del pie de página (p.ej. "T.C.:
+                    // 1396.000", la cotización del dólar) que cayó en la franja de "Cantidad".
+                    if (detalle.Subtotal == 0) continue;
 
                     result.Detalle.Add(detalle);
                 }
@@ -267,8 +268,9 @@ namespace Soltec.DocParser.Services
                 result.Subtotal = ParseNumeroOZero(mSubtotal.Groups[1].Value);
                 result.ImporteTotal = ParseNumeroOZero(mTotal.Groups[1].Value);
                 result.ImporteNetoGravado = result.Subtotal;
-                if (result.ImporteTotal != result.Subtotal)
-                    result.Advertencias.Add($"El IVA no se discrimina por alícuota en este formato; el total incluye ${result.ImporteTotal - result.Subtotal:F2} de impuestos/percepciones sin desglosar.");
+                result.ImporteIva = result.ImporteTotal - result.Subtotal;
+                if (result.ImporteIva != 0)
+                    result.Advertencias.Add($"El IVA (${result.ImporteIva:F2}) no se discrimina por alícuota en este formato; queda en ImporteIva sin desglosar por %.");
                 return;
             }
 
@@ -291,8 +293,9 @@ namespace Soltec.DocParser.Services
                         result.Subtotal = ParseNumeroOZero(valores.First());
                         result.ImporteTotal = ParseNumeroOZero(valores.Last());
                         result.ImporteNetoGravado = result.Subtotal;
-                        if (result.ImporteTotal != result.Subtotal)
-                            result.Advertencias.Add($"El IVA no se discrimina por alícuota en este formato; el total incluye ${result.ImporteTotal - result.Subtotal:F2} de impuestos/percepciones sin desglosar.");
+                        result.ImporteIva = result.ImporteTotal - result.Subtotal;
+                        if (result.ImporteIva != 0)
+                            result.Advertencias.Add($"El IVA (${result.ImporteIva:F2}) no se discrimina por alícuota en este formato; queda en ImporteIva sin desglosar por %.");
                         return;
                     }
                 }

@@ -208,6 +208,7 @@ namespace Soltec.DocParser.Services
             result.Iva0 = GetImporte("IVA 0%", itemsSection);
             result.ImporteOtrosTributos = GetImporte("Importe Otros Tributos", itemsSection);
             result.ImporteTotal = GetImporte("Importe Total", itemsSection);
+            result.ImporteIva = result.Iva27 + result.Iva21 + result.Iva105 + result.Iva5 + result.Iva25 + result.Iva0;
 
             var mCae = Regex.Match(itemsSection, @"CAE N[°º]:\s*(\d+)");
             if (mCae.Success) result.Cae = mCae.Groups[1].Value;

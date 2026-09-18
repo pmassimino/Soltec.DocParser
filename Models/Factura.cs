@@ -47,6 +47,13 @@ namespace Soltec.DocParser.Models
         public decimal Iva5 { get; set; }
         public decimal Iva25 { get; set; }
         public decimal Iva0 { get; set; }
+
+        // Total de IVA, discriminado o no por alícuota. Cuando el comprobante SÍ discrimina
+        // (formato ARCA), es la suma de Iva27+Iva21+Iva105+Iva5+Iva25+Iva0. Cuando no discrimina
+        // (algunos formatos SAE que solo muestran un "Iva. General"), es Total - Subtotal.
+        // Siempre calculado, para no dejar el único registro de cuánto IVA hay en un string de
+        // advertencia que nadie más que un humano puede leer.
+        public decimal ImporteIva { get; set; }
         public decimal ImporteOtrosTributos { get; set; }
         public decimal ImporteTotal { get; set; }
 
