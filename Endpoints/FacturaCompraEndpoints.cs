@@ -48,19 +48,15 @@ namespace Soltec.DocParser.Endpoints
 
                 var primera = paginas[0];
 
+                // ARCA/AFIP tiene un formato fijo y reconocible; para cualquier otro PDF con
+                // texto (sea o no el layout típico de SAE) se intenta el parser genérico, que
+                // hace lo que puede y deja advertencias explícitas por cada campo que no
+                // encuentra, en vez de rechazar de entrada un formato que no vio nunca.
                 Soltec.DocParser.Models.Factura resultado;
                 if (FacturaCompraParser.EsFormatoArca(primera.LineText))
                     resultado = FacturaCompraParser.Parse(primera.LineText, primera.Words, tenant.Cuit);
-                else if (SaeFacturaParser.EsFormatoSae(primera.LineText))
-                    resultado = SaeFacturaParser.Parse(primera.LineText, primera.Words, tenant.Cuit);
                 else
-                {
-                    return Results.Ok(new
-                    {
-                        error = "FORMATO_NO_RECONOCIDO",
-                        mensaje = "El comprobante tiene texto, pero no coincide con ninguno de los formatos de factura soportados (ARCA/AFIP estándar, SAE). Cargar manualmente.",
-                    });
-                }
+                    resultado = SaeFacturaParser.Parse(primera.LineText, primera.Words, tenant.Cuit);
 
                 if (paginas.Count > 1)
                 {

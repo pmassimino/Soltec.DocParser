@@ -66,10 +66,17 @@ namespace Soltec.DocParser.Services
             return (tieneCliente || tieneSenores) && tieneTabla && tieneCae;
         }
 
+        // Parser genérico "para todo lo que no sea ARCA": conoce bien las etiquetas del formato
+        // SAE, pero no rechaza un PDF solo porque no las encuentre -intenta extraer lo que pueda
+        // reconocer (Numero, CAE, fechas, CUIT, etc. usan patrones bastante genéricos) y deja
+        // advertencias explícitas por cada campo que no encuentra, en vez de negarse a intentarlo.
         public static Factura Parse(string lineText, List<Word> words, string empresaCuit)
         {
             var result = new Factura();
             string text = Regex.Replace(lineText, @"\s+", " ").Trim();
+
+            if (!EsFormatoSae(lineText))
+                result.Advertencias.Add("El documento no coincide con la estructura habitual de este parser (SAE); los campos extraídos pueden estar incompletos o vacíos.");
 
             bool esVariantePlana = Regex.IsMatch(text, @"\bCliente\b") && Regex.IsMatch(text, @"C\.U\.I\.T");
             bool esVarianteVieja = !esVariantePlana && Regex.IsMatch(text, @"Se[ñn]or/es");
