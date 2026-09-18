@@ -51,14 +51,14 @@ namespace Soltec.DocParser.Endpoints
                 Soltec.DocParser.Models.FacturaCompra resultado;
                 if (FacturaCompraParser.EsFormatoArca(primera.LineText))
                     resultado = FacturaCompraParser.Parse(primera.LineText, primera.Words, tenant.Cuit);
-                else if (MonteMaizFacturaParser.EsFormatoMonteMaiz(primera.LineText))
-                    resultado = MonteMaizFacturaParser.Parse(primera.LineText, primera.Words, tenant.Cuit);
+                else if (SaeFacturaParser.EsFormatoSae(primera.LineText))
+                    resultado = SaeFacturaParser.Parse(primera.LineText, primera.Words, tenant.Cuit);
                 else
                 {
                     return Results.Ok(new
                     {
                         error = "FORMATO_NO_RECONOCIDO",
-                        mensaje = "El comprobante tiene texto, pero no coincide con ninguno de los formatos de factura soportados (ARCA/AFIP estándar, Monte Maíz). Cargar manualmente.",
+                        mensaje = "El comprobante tiene texto, pero no coincide con ninguno de los formatos de factura soportados (ARCA/AFIP estándar, SAE). Cargar manualmente.",
                     });
                 }
 
