@@ -47,7 +47,21 @@ namespace Soltec.DocParser.Endpoints
                 }
 
                 var primera = paginas[0];
-                var resultado = FacturaCompraParser.Parse(primera.LineText, primera.Words, tenant.Cuit);
+
+                Soltec.DocParser.Models.FacturaCompra resultado;
+                if (FacturaCompraParser.EsFormatoArca(primera.LineText))
+                    resultado = FacturaCompraParser.Parse(primera.LineText, primera.Words, tenant.Cuit);
+                else if (MonteMaizFacturaParser.EsFormatoMonteMaiz(primera.LineText))
+                    resultado = MonteMaizFacturaParser.Parse(primera.LineText, primera.Words, tenant.Cuit);
+                else
+                {
+                    return Results.Ok(new
+                    {
+                        error = "FORMATO_NO_RECONOCIDO",
+                        mensaje = "El comprobante tiene texto, pero no coincide con ninguno de los formatos de factura soportados (ARCA/AFIP estándar, Monte Maíz). Cargar manualmente.",
+                    });
+                }
+
                 if (paginas.Count > 1)
                 {
                     resultado.Advertencias.Add($"El PDF tiene {paginas.Count} páginas con contenido distinto entre sí; solo se procesó la primera. Revisar manualmente si hay ítems en páginas adicionales.");

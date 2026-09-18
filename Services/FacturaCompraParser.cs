@@ -55,6 +55,13 @@ namespace Soltec.DocParser.Services
                 : null;
         }
 
+        public static bool EsFormatoArca(string lineText)
+        {
+            string text = Regex.Replace(lineText, @"\s+", " ");
+            return Regex.IsMatch(text, @"Apellido y Nombre\s*/\s*Raz[oó]n Social:")
+                && Regex.IsMatch(text, @"C[oó]digo Producto\s*/\s*Servicio");
+        }
+
         public static FacturaCompra Parse(string lineText, List<Word> words, string empresaCuit)
         {
             var result = new FacturaCompra();
