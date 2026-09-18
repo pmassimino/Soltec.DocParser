@@ -1,11 +1,11 @@
-using Soltec.FacturaParser.Services;
-using Soltec.FacturaParser.Tenancy;
+using Soltec.DocParser.Services;
+using Soltec.DocParser.Tenancy;
 
-namespace Soltec.FacturaParser.Endpoints
+namespace Soltec.DocParser.Endpoints
 {
-    public static class FacturaParserEndpoints
+    public static class FacturaCompraEndpoints
     {
-        public static void MapFacturaParserEndpoints(this WebApplication app)
+        public static void MapFacturaCompraEndpoints(this WebApplication app)
         {
             app.MapPost("/api/facturas/compra/pdf", async (HttpRequest request) =>
             {

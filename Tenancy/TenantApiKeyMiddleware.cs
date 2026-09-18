@@ -3,7 +3,7 @@ using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Options;
 
-namespace Soltec.FacturaParser.Tenancy
+namespace Soltec.DocParser.Tenancy
 {
     public class TenantApiKeyMiddleware
     {

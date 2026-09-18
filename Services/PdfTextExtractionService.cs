@@ -2,7 +2,7 @@ using System.Text.RegularExpressions;
 using iTextSharp.text.pdf;
 using iTextSharp.text.pdf.parser;
 
-namespace Soltec.FacturaParser.Services
+namespace Soltec.DocParser.Services
 {
     public class PdfPageText
     {

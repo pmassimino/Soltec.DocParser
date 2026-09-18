@@ -1,4 +1,4 @@
-namespace Soltec.FacturaParser.Models
+namespace Soltec.DocParser.Models
 {
     public class DetalleFacturaCompra
     {

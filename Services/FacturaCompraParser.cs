@@ -1,8 +1,8 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
-using Soltec.FacturaParser.Models;
+using Soltec.DocParser.Models;
 
-namespace Soltec.FacturaParser.Services
+namespace Soltec.DocParser.Services
 {
     // Parser por reglas para el formato estándar de comprobante electrónico ARCA/AFIP
     // ("Factura A/B/C", "Factura de Crédito Electrónica MiPyMEs", etc. emitidos desde el

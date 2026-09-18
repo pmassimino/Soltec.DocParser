@@ -1,5 +1,5 @@
-using Soltec.FacturaParser.Endpoints;
-using Soltec.FacturaParser.Tenancy;
+using Soltec.DocParser.Endpoints;
+using Soltec.DocParser.Tenancy;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,6 +19,6 @@ app.UseHttpsRedirection();
 app.UseRouting();
 app.UseMiddleware<TenantApiKeyMiddleware>();
 
-app.MapFacturaParserEndpoints();
+app.MapFacturaCompraEndpoints();
 
 app.Run();

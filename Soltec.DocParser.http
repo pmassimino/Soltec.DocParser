@@ -1,0 +1,6 @@
+@Soltec.DocParser_HostAddress = http://localhost:5037
+
+GET {{Soltec.DocParser_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
