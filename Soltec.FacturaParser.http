@@ -1,0 +1,6 @@
+@Soltec.FacturaParser_HostAddress = http://localhost:5037
+
+GET {{Soltec.FacturaParser_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
