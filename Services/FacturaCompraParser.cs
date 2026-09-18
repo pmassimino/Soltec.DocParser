@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Soltec.DocParser.Models;
+using UglyToad.PdfPig.Content;
 
 namespace Soltec.DocParser.Services
 {
@@ -8,15 +9,42 @@ namespace Soltec.DocParser.Services
     // ("Factura A/B/C", "Factura de Crédito Electrónica MiPyMEs", etc. emitidos desde el
     // portal de comprobantes en línea). No cubre formatos de facturación propios de cada
     // proveedor (ver Advertencias del resultado).
+    //
+    // Los campos de encabezado se extraen por regex sobre el texto reconstruido línea por
+    // línea (confiable: las etiquetas y sus valores quedan casi siempre en la misma línea).
+    // La tabla de ítems, en cambio, se reconstruye por columnas usando las coordenadas reales
+    // de cada palabra (PdfPigExtraction) -no por regex-, porque la columna de descripción suele
+    // partirse en varias líneas de forma impredecible.
     public static class FacturaCompraParser
     {
-        // Los importes pueden venir con separador de miles ("1.971.200,00") o sin él ("1971200,00")
         const string NUM = @"(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2}";
+
+        // Tabla oficial AFIP de códigos de comprobante -> letra. Se usa esto en vez de buscar la
+        // letra suelta ("A"/"B"/"C") en el texto, porque esa letra vive en un recuadro visual
+        // separado del resto del encabezado (con toda la razón social del emisor en el medio, en
+        // el texto extraído), así que no hay ninguna adyacencia confiable para anclar una regex.
+        static readonly Dictionary<int, string> CodigoALetra = new()
+        {
+            [1] = "A", [2] = "A", [3] = "A",
+            [6] = "B", [7] = "B", [8] = "B",
+            [11] = "C", [12] = "C", [13] = "C",
+            [51] = "M", [52] = "M", [53] = "M",
+            [201] = "A", [202] = "A", [203] = "A", // FCE MiPyMEs
+            [206] = "B", [207] = "B", [208] = "B",
+            [211] = "C", [212] = "C", [213] = "C",
+        };
 
         static decimal ParseArNumber(string s)
         {
             s = s.Trim().Replace(".", "").Replace(",", ".");
             return decimal.Parse(s, CultureInfo.InvariantCulture);
+        }
+
+        static decimal ParseArNumberOrZero(string? s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return 0m;
+            var m = Regex.Match(s, NUM);
+            return m.Success ? ParseArNumber(m.Value) : 0m;
         }
 
         static DateTime? ParseArDate(string? s)
@@ -27,16 +55,21 @@ namespace Soltec.DocParser.Services
                 : null;
         }
 
-        public static FacturaCompra Parse(string rawText, string empresaCuit)
+        public static FacturaCompra Parse(string lineText, List<Word> words, string empresaCuit)
         {
             var result = new FacturaCompra();
 
-            // Normalizar a una sola línea: la extracción de texto del PDF no respeta el orden
-            // visual de lectura, pero las etiquetas y sus valores quedan casi siempre adyacentes.
-            string text = Regex.Replace(rawText, @"\s+", " ").Trim();
+            string text = Regex.Replace(lineText, @"\s+", " ").Trim();
 
             var mCod = Regex.Match(text, @"C[OÓ]D\.\s*(\d+)");
-            if (mCod.Success) result.CodigoComprobante = mCod.Groups[1].Value;
+            if (mCod.Success)
+            {
+                result.CodigoComprobante = mCod.Groups[1].Value;
+                if (int.TryParse(result.CodigoComprobante, out var codigoInt) && CodigoALetra.TryGetValue(codigoInt, out var letra))
+                    result.Letra = letra;
+                else
+                    result.Advertencias.Add($"Código de comprobante '{result.CodigoComprobante}' no está en la tabla de letras conocida; verificar la letra manualmente.");
+            }
 
             if (Regex.IsMatch(text, @"NOTA\s+DE\s+CR[ÉE]DITO", RegexOptions.IgnoreCase))
                 result.TipoComprobante = "NOTA DE CREDITO";
@@ -46,9 +79,6 @@ namespace Soltec.DocParser.Services
                 result.TipoComprobante = "FACTURA";
             else
                 result.Advertencias.Add("No se pudo determinar el tipo de comprobante (Factura/NC/ND).");
-
-            var mLetra = Regex.Match(text, @"\b(A|B|C|M)\b\s*C[OÓ]D\.\s*\d+");
-            if (mLetra.Success) result.Letra = mLetra.Groups[1].Value;
 
             var mPv = Regex.Match(text, @"Punto de Venta:\s*(?:Comp\.\s*Nro:\s*)?(\d{4,5})\D+(\d{6,8})");
             if (mPv.Success)
@@ -74,7 +104,7 @@ namespace Soltec.DocParser.Services
             var mVtoPago = Regex.Match(text, @"Fecha de Vto\. para el pago:\s*(\d{2}/\d{2}/\d{4})");
             result.FechaVencimientoPago = ParseArDate(mVtoPago.Success ? mVtoPago.Groups[1].Value : null);
 
-            var mCondVenta = Regex.Match(text, @"Condici[oó]n de venta:\s*(.+?)\s*(?:Precio Unit\.|C[oó]digo Producto|$)");
+            var mCondVenta = Regex.Match(text, @"Condici[oó]n de venta:\s*(.+?)\s*(?:Precio Unit\.|C[oó]digo Producto|Opci[oó]n de Transferencia|$)");
             if (mCondVenta.Success) result.CondicionVenta = mCondVenta.Groups[1].Value.Trim();
 
             // ---- Partir el texto en secciones: emisor | receptor | items+totales ----
@@ -91,48 +121,53 @@ namespace Soltec.DocParser.Services
             string receptorSection = idxTabla > idxReceptor ? text.Substring(idxReceptor, idxTabla - idxReceptor) : text.Substring(idxReceptor);
             string itemsSection = idxTabla >= 0 ? text.Substring(idxTabla) : "";
 
-            // ---- Emisor (proveedor) ----
-            var mEmisorCuit = Regex.Match(emisorSection, @"(?<!Apellido y Nombre\s*/\s*)Raz[oó]n Social:\s*(.+?)\s*CUIT:\s*(\d{11})");
-            if (mEmisorCuit.Success)
-            {
-                result.ProveedorRazonSocial = mEmisorCuit.Groups[1].Value.Trim();
-                result.ProveedorCuit = mEmisorCuit.Groups[2].Value;
-            }
-            else
-            {
-                result.Advertencias.Add("No se pudo extraer Razón Social / CUIT del emisor (proveedor).");
-            }
+            // Límite compartido para todas las capturas de esta zona: la tabla es de 2 columnas
+            // (emisor/receptor) y, según el PDF, un campo puede terminar compartiendo la misma
+            // línea "visual" que el campo siguiente en cualquier orden (izquierda/derecha). Por
+            // eso cada captura corta en CUALQUIER etiqueta conocida, no solo en la esperada.
+            const string Boundary = @"(?=CUIT:|Raz[oó]n Social:|Apellido y Nombre|Domicilio|Ingresos Brutos:|Fecha de Inicio de Actividades:|Fecha de Emisi[oó]n:|Condici[oó]n frente al IVA:|Per[ií]odo Facturado|Fecha de Vto\. para el pago:|Condici[oó]n de venta:|CBU del Emisor:|$)";
 
-            var mEmisorDom = Regex.Match(emisorSection, @"Domicilio Comercial:\s*(.+?)\s*Ingresos Brutos:");
+            // ---- CUIT emisor / receptor ----
+            // El orden visual entre la etiqueta "CUIT:" y la razón social varía según la columna
+            // en la que caiga cada uno (no siempre "Razón Social ... CUIT", a veces al revés), así
+            // que en vez de asumir un orden fijo se empareja cada CUIT con la etiqueta de nombre
+            // más cercana en el texto.
+            var mApellido = Regex.Match(text, @"Apellido y Nombre\s*/\s*Raz[oó]n Social:");
+            var mRazonSocialEmisor = Regex.Match(emisorSection, @"(?<!Apellido y Nombre\s*/\s*)Raz[oó]n Social:");
+            var todosLosCuit = Regex.Matches(text, @"CUIT:\s*(\d{11})").Cast<Match>().ToList();
+
+            Match? cuitReceptor = null, cuitEmisor = null;
+            if (todosLosCuit.Count > 0 && mApellido.Success)
+                cuitReceptor = todosLosCuit.OrderBy(m => Math.Abs(m.Index - mApellido.Index)).First();
+            if (todosLosCuit.Count > 0 && mRazonSocialEmisor.Success)
+                cuitEmisor = todosLosCuit.Where(m => m != cuitReceptor).OrderBy(m => Math.Abs(m.Index - mRazonSocialEmisor.Index)).FirstOrDefault()
+                    ?? todosLosCuit.FirstOrDefault(m => m != cuitReceptor);
+
+            if (cuitEmisor != null) result.ProveedorCuit = cuitEmisor.Groups[1].Value;
+            if (cuitReceptor != null) result.ReceptorCuit = cuitReceptor.Groups[1].Value;
+
+            // ---- Emisor (proveedor) ----
+            var mEmisorRazon = Regex.Match(emisorSection, @"(?<!Apellido y Nombre\s*/\s*)Raz[oó]n Social:\s*(.+?)\s*" + Boundary);
+            if (mEmisorRazon.Success) result.ProveedorRazonSocial = mEmisorRazon.Groups[1].Value.Trim();
+            else result.Advertencias.Add("No se pudo extraer la Razón Social del emisor (proveedor).");
+
+            if (cuitEmisor == null) result.Advertencias.Add("No se pudo extraer el CUIT del emisor (proveedor).");
+
+            var mEmisorDom = Regex.Match(emisorSection, @"Domicilio Comercial:\s*(.+?)\s*" + Boundary);
             if (mEmisorDom.Success) result.ProveedorDomicilio = mEmisorDom.Groups[1].Value.Trim();
 
-            var mEmisorIIBB = Regex.Match(emisorSection, @"Ingresos Brutos:\s*(.+?)\s*Fecha de Inicio de Actividades:");
+            var mEmisorIIBB = Regex.Match(emisorSection, @"Ingresos Brutos:\s*(.+?)\s*" + Boundary);
             if (mEmisorIIBB.Success) result.ProveedorIngresosBrutos = mEmisorIIBB.Groups[1].Value.Trim();
 
-            var mEmisorCondIva = Regex.Match(emisorSection, @"Condici[oó]n frente al IVA:\s*(.+?)\s*(?=Per[ií]odo Facturado|Fecha de Vto\. para el pago|CBU del Emisor|$)");
+            var mEmisorCondIva = Regex.Match(emisorSection, @"Condici[oó]n frente al IVA:\s*(.+?)\s*" + Boundary);
             if (mEmisorCondIva.Success) result.ProveedorCondicionIva = mEmisorCondIva.Groups[1].Value.Trim();
 
             // ---- Receptor ----
-            // El orden "Razón Social ... CUIT" es el más común, pero algunas variantes (p.ej. FCE) lo invierten.
-            var mReceptor = Regex.Match(receptorSection, @"Apellido y Nombre\s*/\s*Raz[oó]n Social:\s*(.+?)\s*CUIT:\s*(\d{11})");
-            if (mReceptor.Success)
-            {
-                result.ReceptorRazonSocial = mReceptor.Groups[1].Value.Trim();
-                result.ReceptorCuit = mReceptor.Groups[2].Value;
-            }
-            else
-            {
-                var mReceptorAlt = Regex.Match(receptorSection, @"CUIT:\s*(\d{11})\s*Apellido y Nombre\s*/\s*Raz[oó]n Social:\s*(.+?)\s*(?=Condici[oó]n frente al IVA|Domicilio|$)");
-                if (mReceptorAlt.Success)
-                {
-                    result.ReceptorCuit = mReceptorAlt.Groups[1].Value;
-                    result.ReceptorRazonSocial = mReceptorAlt.Groups[2].Value.Trim();
-                }
-                else
-                {
-                    result.Advertencias.Add("No se pudo extraer Razón Social / CUIT del receptor.");
-                }
-            }
+            var mReceptorRazon = Regex.Match(receptorSection, @"Apellido y Nombre\s*/\s*Raz[oó]n Social:\s*(.+?)\s*" + Boundary);
+            if (mReceptorRazon.Success) result.ReceptorRazonSocial = mReceptorRazon.Groups[1].Value.Trim();
+            else result.Advertencias.Add("No se pudo extraer la Razón Social del receptor.");
+
+            if (cuitReceptor == null) result.Advertencias.Add("No se pudo extraer el CUIT del receptor.");
 
             string cuitPropio = Regex.Replace(empresaCuit ?? "", @"\D", "");
             if (!string.IsNullOrEmpty(result.ReceptorCuit) && result.ReceptorCuit == cuitPropio)
@@ -174,75 +209,77 @@ namespace Soltec.DocParser.Services
             var mVtoCae = Regex.Match(itemsSection, @"Fecha de Vto\. de CAE:\s*(\d{2}/\d{2}/\d{4})");
             result.FechaVtoCae = ParseArDate(mVtoCae.Success ? mVtoCae.Groups[1].Value : null);
 
-            // ---- Items ----
-            // Recorta la sección de items a lo que hay ANTES de "Subtotal:" / "Importe..." (ahí empiezan los totales)
-            int idxTotales = itemsSection.Length;
-            foreach (var marker in new[] { "Subtotal:", "Importe Otros Tributos:", "Importe Neto Gravado:", "Importe Total:" })
-            {
-                var idx = itemsSection.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-                if (idx >= 0 && idx < idxTotales) idxTotales = idx;
-            }
-            string tablaTexto = itemsSection.Substring(0, idxTotales);
+            // ---- Items (por columnas reales, no por regex sobre texto aplanado) ----
+            ExtraerItems(words, result);
 
-            // Un ítem = una línea con la secuencia numérica de cantidad/precio/etc.
-            // Casos vistos: [codigo]? [desc]? cantidad [um]? precio bonif% [impbonif]? subtotal [alicuota% subtotalIva]?
-            var itemRegex = new Regex(
-                @"(?<pre>.*?)(?<cantidad>" + NUM + @")\s+(?:(?<um1>unidades|otras\s+unidades|kg|litros|lts)\s+)?" +
-                @"(?<precio>" + NUM + @")\s+(?<bonifpct>" + NUM + @")\s+" +
-                @"(?:(?<impbonif>" + NUM + @")\s+)?(?<subtotal>" + NUM + @")" +
-                @"(?:\s+(?<alicuota>\d{1,2}(?:[.,]\d+)?)%\s+(?<subtotaliva>" + NUM + @"))?",
-                RegexOptions.IgnoreCase);
+            return result;
+        }
 
-            var matches = itemRegex.Matches(tablaTexto);
-            if (matches.Count == 0)
+        static void ExtraerItems(List<Word> words, FacturaCompra result)
+        {
+            var lines = PdfPigExtraction.GroupIntoLines(words, 3.0);
+
+            var headerLine = lines.FirstOrDefault(l => l.Any(w =>
+                w.Text.Equals("Código", StringComparison.OrdinalIgnoreCase) || w.Text.Equals("Codigo", StringComparison.OrdinalIgnoreCase)));
+            var totalsLine = lines.FirstOrDefault(l => l.Any(w => w.Text.Equals("Subtotal:", StringComparison.OrdinalIgnoreCase)))
+                ?? lines.FirstOrDefault(l => l.Any(w => w.Text.StartsWith("Importe", StringComparison.OrdinalIgnoreCase)));
+
+            if (headerLine == null || totalsLine == null)
             {
                 result.Advertencias.Add("No se pudo detectar ningún ítem de detalle en la tabla del comprobante.");
+                return;
             }
 
-            var boundaries = matches.Select(m => (start: m.Index, end: m.Index + m.Length, m)).ToList();
-            int lastEnd = 0;
-            for (int i = 0; i < boundaries.Count; i++)
-            {
-                var (start, end, m) = boundaries[i];
-                int nextStart = (i == boundaries.Count - 1) ? tablaTexto.Length : boundaries[i + 1].start;
-                string before = tablaTexto.Substring(lastEnd, start - lastEnd);
-                string after = tablaTexto.Substring(end, nextStart - end);
-                lastEnd = nextStart;
+            double tablaTop = headerLine[0].BoundingBox.Top;
+            double tablaBottom = totalsLine[0].BoundingBox.Top;
 
-                string pre = m.Groups["pre"].Value;
-                // El texto de la descripción suele quedar partido antes y después de la fila numérica
-                // (efecto de columnas del PDF), así que se reconstruye uniendo ambos lados.
-                string desc = (before + " " + pre + " " + after).Trim();
-                // Sacar boilerplate de encabezados de columnas / palabras de unidad que puedan quedar mezclados.
-                // Nota: sin \b después de un ".", porque entre dos caracteres no-palabra (p.ej "." y " ") \b nunca matchea.
-                desc = Regex.Replace(desc, @"C[oó]digo Producto\s*/\s*Servicio|\bCantidad\b|U\.\s*Medida|Precio Unit\.|%\s*Bonif|Imp\.\s*Bonif\.?|\bSubtotal\b|\bAlicuota\b|\bIVA\b|\botras\b|\bunidades\b", "", RegexOptions.IgnoreCase);
-                desc = Regex.Replace(desc, @"\s+", " ").Trim();
+            var filas = PdfPigExtraction.ExtractItemRows(words, tablaTop, tablaBottom);
+            if (filas.Count == 0)
+            {
+                result.Advertencias.Add("No se pudo detectar ningún ítem de detalle en la tabla del comprobante.");
+                return;
+            }
+
+            foreach (var fila in filas)
+            {
+                string desc = fila.Descripcion;
+                string codigo = "";
+                var mCodigo = Regex.Match(desc, @"^(\d{1,6})\s+(.*)$");
+                if (mCodigo.Success)
+                {
+                    codigo = mCodigo.Groups[1].Value;
+                    desc = mCodigo.Groups[2].Value.Trim();
+                }
+
+                string subtotal0 = fila.Columnas.GetValueOrDefault("Subtotal0", "");
+                string alicuota = fila.Columnas.GetValueOrDefault("Alicuota", "");
+
+                // Caso límite: si la etiqueta "Alicuota" quedó desalineada de su valor real en la
+                // fila (encabezado angosto tipo "Alicuota IVA" partido en 2 líneas), el "21%" puede
+                // terminar pegado al final del valor de Subtotal0 en vez de en su propia columna.
+                var mAlicuotaEmbebida = Regex.Match(subtotal0, @"^(" + NUM + @")\s+(\d{1,2}(?:[.,]\d+)?)%$");
+                if (string.IsNullOrEmpty(alicuota) && mAlicuotaEmbebida.Success)
+                {
+                    alicuota = mAlicuotaEmbebida.Groups[2].Value;
+                    subtotal0 = mAlicuotaEmbebida.Groups[1].Value;
+                }
 
                 var detalle = new DetalleFacturaCompra
                 {
+                    Codigo = codigo,
                     Concepto = desc,
-                    Cantidad = ParseArNumber(m.Groups["cantidad"].Value),
-                    UnidadMedida = m.Groups["um1"].Success ? m.Groups["um1"].Value.Trim() : "",
-                    PrecioUnitario = ParseArNumber(m.Groups["precio"].Value),
-                    PorcentajeBonificacion = ParseArNumber(m.Groups["bonifpct"].Value),
-                    ImporteBonificacion = m.Groups["impbonif"].Success ? ParseArNumber(m.Groups["impbonif"].Value) : 0m,
-                    Subtotal = ParseArNumber(m.Groups["subtotal"].Value),
-                    AlicuotaIva = m.Groups["alicuota"].Success ? ParseArNumber(m.Groups["alicuota"].Value.Replace(".", ",")) : 0m,
-                    SubtotalConIva = m.Groups["subtotaliva"].Success ? ParseArNumber(m.Groups["subtotaliva"].Value) : 0m,
+                    Cantidad = ParseArNumberOrZero(fila.Columnas.GetValueOrDefault("Cantidad")),
+                    UnidadMedida = fila.Columnas.GetValueOrDefault("UM", "").Trim(),
+                    PrecioUnitario = ParseArNumberOrZero(fila.Columnas.GetValueOrDefault("Precio")),
+                    PorcentajeBonificacion = ParseArNumberOrZero(fila.Columnas.GetValueOrDefault("BonifPct")),
+                    ImporteBonificacion = ParseArNumberOrZero(fila.Columnas.GetValueOrDefault("ImpBonif")),
+                    Subtotal = ParseArNumberOrZero(subtotal0),
+                    AlicuotaIva = string.IsNullOrEmpty(alicuota) ? 0m : ParseArNumber(alicuota.Replace(".", ",")),
+                    SubtotalConIva = ParseArNumberOrZero(fila.Columnas.GetValueOrDefault("Subtotal1")),
                 };
-
-                // intenta separar un código numérico inicial (ej: "001 COMISIÓN...")
-                var mCodigo = Regex.Match(detalle.Concepto, @"^(\d{1,6})\s+(.*)$");
-                if (mCodigo.Success)
-                {
-                    detalle.Codigo = mCodigo.Groups[1].Value;
-                    detalle.Concepto = mCodigo.Groups[2].Value.Trim();
-                }
 
                 result.Detalle.Add(detalle);
             }
-
-            return result;
         }
     }
 }

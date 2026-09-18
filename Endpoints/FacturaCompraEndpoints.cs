@@ -27,9 +27,17 @@ namespace Soltec.DocParser.Endpoints
                 await file.CopyToAsync(ms);
                 var bytes = ms.ToArray();
 
-                var extraccion = PdfTextExtractionService.ExtractText(bytes);
+                List<Soltec.DocParser.Services.ExtractedPage> paginas;
+                try
+                {
+                    paginas = PdfPigExtraction.ExtractDedupedPages(bytes);
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest("No se pudo abrir el PDF: " + ex.Message);
+                }
 
-                if (!extraccion.TieneTexto)
+                if (paginas.Count == 0 || paginas.All(p => string.IsNullOrWhiteSpace(p.LineText)))
                 {
                     return Results.Ok(new
                     {
@@ -38,16 +46,11 @@ namespace Soltec.DocParser.Endpoints
                     });
                 }
 
-                if (extraccion.PaginasUnicas.Count > 1)
+                var primera = paginas[0];
+                var resultado = FacturaCompraParser.Parse(primera.LineText, primera.Words, tenant.Cuit);
+                if (paginas.Count > 1)
                 {
-                    // Puede ser paginación real (más ítems) o simplemente un formato no reconocido;
-                    // se avisa en vez de asumir cualquiera de los dos.
-                }
-
-                var resultado = FacturaCompraParser.Parse(extraccion.PaginasUnicas[0], tenant.Cuit);
-                if (extraccion.PaginasUnicas.Count > 1)
-                {
-                    resultado.Advertencias.Add($"El PDF tiene {extraccion.PaginasUnicas.Count} páginas con contenido distinto entre sí; solo se procesó la primera. Revisar manualmente si hay ítems en páginas adicionales.");
+                    resultado.Advertencias.Add($"El PDF tiene {paginas.Count} páginas con contenido distinto entre sí; solo se procesó la primera. Revisar manualmente si hay ítems en páginas adicionales.");
                 }
 
                 return Results.Ok(resultado);
