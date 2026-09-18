@@ -1,5 +1,15 @@
 namespace Soltec.DocParser.Models
 {
+    // Un importe identificado por código, para listas de longitud variable (alícuotas de IVA,
+    // percepciones, impuestos) en vez de una propiedad fija por cada una -así un comprobante con
+    // una alícuota que no se había visto todavía (o sin alguna de las habituales) no obliga a
+    // tocar el modelo.
+    public class ImporteConId
+    {
+        public string Id { get; set; } = "";
+        public decimal Importe { get; set; }
+    }
+
     public class DetalleFacturaCompra
     {
         public string Codigo { get; set; } = "";
@@ -41,20 +51,19 @@ namespace Soltec.DocParser.Models
 
         public decimal Subtotal { get; set; }
         public decimal ImporteNetoGravado { get; set; }
-        public decimal Iva27 { get; set; }
-        public decimal Iva21 { get; set; }
-        public decimal Iva105 { get; set; }
-        public decimal Iva5 { get; set; }
-        public decimal Iva25 { get; set; }
-        public decimal Iva0 { get; set; }
 
-        // Total de IVA, discriminado o no por alícuota. Cuando el comprobante SÍ discrimina
-        // (formato ARCA), es la suma de Iva27+Iva21+Iva105+Iva5+Iva25+Iva0. Cuando no discrimina
-        // (algunos formatos SAE que solo muestran un "Iva. General"), es Total - Subtotal.
-        // Siempre calculado, para no dejar el único registro de cuánto IVA hay en un string de
-        // advertencia que nadie más que un humano puede leer.
-        public decimal ImporteIva { get; set; }
-        public decimal ImporteOtrosTributos { get; set; }
+        // Una entrada por alícuota con importe, Id="IVA21"/"IVA105"/"IVA27"/"IVA5"/"IVA2_5"/"IVA0".
+        // Si el comprobante no discrimina por alícuota (algunos formatos SAE solo muestran un
+        // "Iva. General"), se usa "IVA21" igual -es la alícuota general/estándar en Argentina-.
+        public List<ImporteConId> Ivas { get; set; } = new();
+
+        // Percepciones/impuestos/otros importes del comprobante que no son IVA (Percepción IB,
+        // Percepción IVA, Impuesto Interno, "No Gravado", etc.), cada uno con su Id tal como lo
+        // llama el comprobante.
+        public List<ImporteConId> Percepciones { get; set; } = new();
+
+        // Suma de Ivas, para no tener que recorrer la lista cada vez que solo hace falta el total.
+        public decimal ImporteIva => Ivas.Sum(i => i.Importe);
         public decimal ImporteTotal { get; set; }
 
         public string Cae { get; set; } = "";

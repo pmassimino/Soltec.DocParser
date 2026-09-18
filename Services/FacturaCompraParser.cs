@@ -200,15 +200,23 @@ namespace Soltec.DocParser.Services
 
             result.Subtotal = GetImporte("Subtotal", itemsSection);
             result.ImporteNetoGravado = GetImporte("Importe Neto Gravado", itemsSection);
-            result.Iva27 = GetImporte("IVA 27%", itemsSection);
-            result.Iva21 = GetImporte("IVA 21%", itemsSection);
-            result.Iva105 = GetImporte("IVA 10.5%", itemsSection);
-            result.Iva5 = GetImporte("IVA 5%", itemsSection);
-            result.Iva25 = GetImporte("IVA 2.5%", itemsSection);
-            result.Iva0 = GetImporte("IVA 0%", itemsSection);
-            result.ImporteOtrosTributos = GetImporte("Importe Otros Tributos", itemsSection);
+
+            void AgregarIva(string id, string label)
+            {
+                var importe = GetImporte(label, itemsSection);
+                if (importe != 0) result.Ivas.Add(new ImporteConId { Id = id, Importe = importe });
+            }
+            AgregarIva("IVA27", "IVA 27%");
+            AgregarIva("IVA21", "IVA 21%");
+            AgregarIva("IVA105", "IVA 10.5%");
+            AgregarIva("IVA5", "IVA 5%");
+            AgregarIva("IVA2_5", "IVA 2.5%");
+            AgregarIva("IVA0", "IVA 0%");
+
+            var otrosTributos = GetImporte("Importe Otros Tributos", itemsSection);
+            if (otrosTributos != 0) result.Percepciones.Add(new ImporteConId { Id = "OtrosTributos", Importe = otrosTributos });
+
             result.ImporteTotal = GetImporte("Importe Total", itemsSection);
-            result.ImporteIva = result.Iva27 + result.Iva21 + result.Iva105 + result.Iva5 + result.Iva25 + result.Iva0;
 
             var mCae = Regex.Match(itemsSection, @"CAE N[°º]:\s*(\d+)");
             if (mCae.Success) result.Cae = mCae.Groups[1].Value;

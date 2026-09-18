@@ -257,34 +257,40 @@ namespace Soltec.DocParser.Services
             ExtraerTotales(text, words, totalesLabelLine, result);
         }
 
-        // Vuelca un importe de IVA en el campo de alícuota correspondiente (reutiliza los mismos
-        // campos que ya llena el parser ARCA: Iva21, Iva105, etc.), o lo deja en un "resto" sin
-        // clasificar si la etiqueta no es una alícuota estándar (p.ej. "Iva. 11", que se vio en
-        // comprobantes reales pero no es ninguna de las alícuotas de AFIP). "General" es la
-        // alícuota estándar (21%) en Argentina, así que se asigna a Iva21.
-        static void AsignarAlicuota(Factura result, string etiqueta, decimal importe, ref decimal sinClasificar)
+        // Agrega (o suma, si ya hay una entrada con el mismo Id) un importe de IVA a la lista,
+        // identificado por alícuota ("IVA21", "IVA105", etc., igual que el parser ARCA). "General"
+        // es la alícuota estándar (21%) en Argentina. Una etiqueta que no sea ninguna alícuota
+        // conocida de AFIP (p.ej. "Iva. 11", vista en comprobantes reales) igual se agrega, con
+        // su propio Id derivado de la etiqueta, en vez de perderse mezclada en un total.
+        static void AgregarIva(Factura result, string etiqueta, decimal importe)
         {
             if (importe == 0) return;
-            switch (etiqueta.Trim())
+            string id = etiqueta.Trim() switch
             {
-                case "General": result.Iva21 += importe; break;
-                case "27": result.Iva27 += importe; break;
-                case "21": result.Iva21 += importe; break;
-                case "10.5": case "10,5": result.Iva105 += importe; break;
-                case "5": result.Iva5 += importe; break;
-                case "2.5": case "2,5": result.Iva25 += importe; break;
-                case "0": break; // alícuota 0%, no suma importe
-                default:
-                    sinClasificar += importe;
-                    result.Advertencias.Add($"Columna 'Iva. {etiqueta}' (${importe:F2}) no es una alícuota estándar de AFIP; queda sin clasificar en ImporteIva.");
-                    break;
-            }
+                "General" => "IVA21",
+                "27" => "IVA27",
+                "21" => "IVA21",
+                "10.5" or "10,5" => "IVA105",
+                "5" => "IVA5",
+                "2.5" or "2,5" => "IVA25",
+                "0" => "IVA0",
+                var otra => "IVA_" + Regex.Replace(otra, @"[^\w]", ""),
+            };
+            var existente = result.Ivas.FirstOrDefault(i => i.Id == id);
+            if (existente != null) existente.Importe += importe;
+            else result.Ivas.Add(new ImporteConId { Id = id, Importe = importe });
+        }
+
+        static void AgregarPercepcion(Factura result, string id, decimal importe)
+        {
+            if (importe == 0) return;
+            var existente = result.Percepciones.FirstOrDefault(p => p.Id == id);
+            if (existente != null) existente.Importe += importe;
+            else result.Percepciones.Add(new ImporteConId { Id = id, Importe = importe });
         }
 
         static void ExtraerTotales(string text, List<Word> words, List<Word>? totalesLabelLine, Factura result)
         {
-            decimal sinClasificar = 0;
-
             // Variante "en línea": cada etiqueta y su valor comparten renglón, así que quedan
             // adyacentes en el texto reconstruido (ver Union Agrícola).
             var mSubtotal = Regex.Match(text, @"Sub\.\s*Total\s+(" + NUM + ")");
@@ -296,9 +302,17 @@ namespace Soltec.DocParser.Services
                 result.ImporteNetoGravado = result.Subtotal;
 
                 foreach (Match m in Regex.Matches(text, @"Iva\.\s*(General|\d+(?:[.,]\d+)?)\s+(" + NUM + ")"))
-                    AsignarAlicuota(result, m.Groups[1].Value, ParseNumeroOZero(m.Groups[2].Value), ref sinClasificar);
+                    AgregarIva(result, m.Groups[1].Value, ParseNumeroOZero(m.Groups[2].Value));
 
-                result.ImporteIva = result.Iva27 + result.Iva21 + result.Iva105 + result.Iva5 + result.Iva25 + result.Iva0 + sinClasificar;
+                var mDesc = Regex.Match(text, @"\bDesc\.\s+(" + NUM + ")");
+                if (mDesc.Success) AgregarPercepcion(result, "Desc", ParseNumeroOZero(mDesc.Groups[1].Value));
+                var mPerc = Regex.Match(text, @"(?:Percepci[oó]n:|Perc\.)\s+(" + NUM + ")");
+                if (mPerc.Success) AgregarPercepcion(result, "Perc", ParseNumeroOZero(mPerc.Groups[1].Value));
+                var mImp = Regex.Match(text, @"\bImpuestos\s+(" + NUM + ")");
+                if (mImp.Success) AgregarPercepcion(result, "Impuestos", ParseNumeroOZero(mImp.Groups[1].Value));
+                var mNg = Regex.Match(text, @"\bN\.G\s+(" + NUM + ")");
+                if (mNg.Success) AgregarPercepcion(result, "NoGravado", ParseNumeroOZero(mNg.Groups[1].Value));
+
                 AvisarSiHayDiferenciaSinExplicar(result);
                 return;
             }
@@ -359,8 +373,9 @@ namespace Soltec.DocParser.Services
                     result.Subtotal = ParseNumeroOZero(valores.First());
                     result.ImporteTotal = ParseNumeroOZero(valores.Last());
                     result.ImporteNetoGravado = result.Subtotal;
-                    result.ImporteIva = result.ImporteTotal - result.Subtotal;
-                    result.Advertencias.Add("No se pudo relacionar cada columna de totales con su valor (formato no previsto); el IVA no se discrimina por alícuota y queda solo en ImporteIva.");
+                    if (result.ImporteTotal != result.Subtotal)
+                        result.Ivas.Add(new ImporteConId { Id = "IVA_SIN_DISCRIMINAR", Importe = result.ImporteTotal - result.Subtotal });
+                    result.Advertencias.Add("No se pudo relacionar cada columna de totales con su valor (formato no previsto); el IVA no se discrimina por alícuota.");
                     return;
                 }
 
@@ -369,11 +384,14 @@ namespace Soltec.DocParser.Services
                     decimal valor = ParseNumeroOZero(valores[i]);
                     if (columnas[i] == "SubTotal1") result.Subtotal = valor;
                     else if (columnas[i] == "Total") result.ImporteTotal = valor;
-                    else if (columnas[i].StartsWith("Iva:")) AsignarAlicuota(result, columnas[i].Substring(4), valor, ref sinClasificar);
+                    else if (columnas[i].StartsWith("Iva:")) AgregarIva(result, columnas[i].Substring(4), valor);
+                    else if (columnas[i] == "Desc.") AgregarPercepcion(result, "Desc", valor);
+                    else if (columnas[i] == "Perc.") AgregarPercepcion(result, "Perc", valor);
+                    else if (columnas[i] == "N.G") AgregarPercepcion(result, "NoGravado", valor);
+                    else if (columnas[i] == "Impuestos") AgregarPercepcion(result, "Impuestos", valor);
                 }
 
                 result.ImporteNetoGravado = result.Subtotal;
-                result.ImporteIva = result.Iva27 + result.Iva21 + result.Iva105 + result.Iva5 + result.Iva25 + result.Iva0 + sinClasificar;
                 AvisarSiHayDiferenciaSinExplicar(result);
                 return;
             }
@@ -381,14 +399,14 @@ namespace Soltec.DocParser.Services
             result.Advertencias.Add("No se pudieron extraer los totales del comprobante.");
         }
 
-        // Percepción/Impuestos/No Gravado no son IVA, pero sí afectan el Total; si después de
-        // sacar el Subtotal y el IVA clasificado queda una diferencia, se avisa en vez de
-        // dejarla invisible (no se intenta adivinar en qué campo va cada una de esas columnas).
+        // Si después de sumar Subtotal + Ivas + Percepciones sigue sin cerrar contra el Total,
+        // hay algo que ninguna de las columnas conocidas explica -se avisa en vez de dejarlo
+        // invisible, pero sin inventar en qué columna iría.
         static void AvisarSiHayDiferenciaSinExplicar(Factura result)
         {
-            decimal resto = result.ImporteTotal - result.Subtotal - result.ImporteIva;
+            decimal resto = result.ImporteTotal - result.Subtotal - result.ImporteIva - result.Percepciones.Sum(p => p.Importe);
             if (Math.Abs(resto) >= 0.01m)
-                result.Advertencias.Add($"Quedan ${resto:F2} del total sin explicar por Subtotal + IVA (probablemente percepciones/impuestos de este comprobante); revisar manualmente.");
+                result.Advertencias.Add($"Quedan ${resto:F2} del total sin explicar por Subtotal + IVA + Percepciones; revisar manualmente.");
         }
     }
 }
