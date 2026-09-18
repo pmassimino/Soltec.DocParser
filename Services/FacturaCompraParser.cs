@@ -280,7 +280,7 @@ namespace Soltec.DocParser.Services
                     subtotal0 = mAlicuotaEmbebida.Groups[1].Value;
                 }
 
-                var detalle = new DetalleFacturaCompra
+                var detalle = new DetalleFactura
                 {
                     Codigo = codigo,
                     Concepto = desc,

@@ -48,15 +48,23 @@ namespace Soltec.DocParser.Endpoints
 
                 var primera = paginas[0];
 
-                // ARCA/AFIP tiene un formato fijo y reconocible; para cualquier otro PDF con
-                // texto (sea o no el layout típico de SAE) se intenta el parser genérico, que
-                // hace lo que puede y deja advertencias explícitas por cada campo que no
-                // encuentra, en vez de rechazar de entrada un formato que no vio nunca.
+                // ARCA/AFIP y el formato "Gravado/Exento" (AGRIPUERTO y similares) tienen una
+                // estructura fija y reconocible; para cualquier otro PDF con texto (sea o no el
+                // layout típico de SAE) se intenta el parser genérico, que hace lo que puede y
+                // deja advertencias explícitas por cada campo que no encuentra, en vez de
+                // rechazar de entrada un formato que no vio nunca.
                 Soltec.DocParser.Models.Factura resultado;
                 if (FacturaCompraParser.EsFormatoArca(primera.LineText))
                     resultado = FacturaCompraParser.Parse(primera.LineText, primera.Words, tenant.Cuit);
+                else if (FacturaGravadoParser.EsFormatoGravado(primera.LineText))
+                    resultado = FacturaGravadoParser.Parse(primera.LineText, primera.Words, tenant.Cuit);
                 else
                     resultado = SaeFacturaParser.Parse(primera.LineText, primera.Words, tenant.Cuit);
+
+                // El CTG/peso/tarifa puede venir embebido en la descripción de cualquier
+                // formato (no solo el de AGRIPUERTO); se intenta siempre, sin efecto si no hay nada que extraer.
+                foreach (var item in resultado.Detalle)
+                    DetalleEnriquecimiento.EnriquecerConCtgPesoTarifa(item);
 
                 if (paginas.Count > 1)
                 {

@@ -10,7 +10,7 @@ namespace Soltec.DocParser.Models
         public decimal Importe { get; set; }
     }
 
-    public class DetalleFacturaCompra
+    public class DetalleFactura
     {
         public string Codigo { get; set; } = "";
         public string Concepto { get; set; } = "";
@@ -22,6 +22,14 @@ namespace Soltec.DocParser.Models
         public decimal Subtotal { get; set; }
         public decimal AlicuotaIva { get; set; }
         public decimal SubtotalConIva { get; set; }
+
+        // CTG / número de carta de porte del ítem (siempre 11 dígitos), cuando la descripción lo
+        // trae -típico en facturas de acopio/flete de granos, para poder cruzar contra la carta
+        // de porte y controlar que tarifa, peso y CTG coincidan con lo facturado-. Vacío si el
+        // ítem no menciona uno.
+        public string Ctg { get; set; } = "";
+        public decimal? Peso { get; set; }
+        public decimal? Tarifa { get; set; }
     }
 
     public class Factura
@@ -70,7 +78,7 @@ namespace Soltec.DocParser.Models
         public string Cae { get; set; } = "";
         public DateTime? FechaVtoCae { get; set; }
 
-        public List<DetalleFacturaCompra> Detalle { get; set; } = new();
+        public List<DetalleFactura> Detalle { get; set; } = new();
 
         // Diagnóstico: por qué el parseo puede no ser confiable. Nunca se debe registrar
         // en contabilidad un comprobante con advertencias sin revisión humana.

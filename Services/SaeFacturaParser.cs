@@ -236,7 +236,7 @@ namespace Soltec.DocParser.Services
                     var porColumna = linea.GroupBy(w => ColumnFor(w.BoundingBox.Left))
                         .ToDictionary(g => g.Key, g => string.Join(" ", g.OrderBy(w => w.BoundingBox.Left).Select(w => w.Text)));
 
-                    var detalle = new DetalleFacturaCompra
+                    var detalle = new DetalleFactura
                     {
                         Codigo = porColumna.GetValueOrDefault("Codigo", "").Trim(),
                         Concepto = porColumna.GetValueOrDefault("Detalle", "").Trim(),
