@@ -257,8 +257,34 @@ namespace Soltec.DocParser.Services
             ExtraerTotales(text, words, totalesLabelLine, result);
         }
 
+        // Vuelca un importe de IVA en el campo de alícuota correspondiente (reutiliza los mismos
+        // campos que ya llena el parser ARCA: Iva21, Iva105, etc.), o lo deja en un "resto" sin
+        // clasificar si la etiqueta no es una alícuota estándar (p.ej. "Iva. 11", que se vio en
+        // comprobantes reales pero no es ninguna de las alícuotas de AFIP). "General" es la
+        // alícuota estándar (21%) en Argentina, así que se asigna a Iva21.
+        static void AsignarAlicuota(Factura result, string etiqueta, decimal importe, ref decimal sinClasificar)
+        {
+            if (importe == 0) return;
+            switch (etiqueta.Trim())
+            {
+                case "General": result.Iva21 += importe; break;
+                case "27": result.Iva27 += importe; break;
+                case "21": result.Iva21 += importe; break;
+                case "10.5": case "10,5": result.Iva105 += importe; break;
+                case "5": result.Iva5 += importe; break;
+                case "2.5": case "2,5": result.Iva25 += importe; break;
+                case "0": break; // alícuota 0%, no suma importe
+                default:
+                    sinClasificar += importe;
+                    result.Advertencias.Add($"Columna 'Iva. {etiqueta}' (${importe:F2}) no es una alícuota estándar de AFIP; queda sin clasificar en ImporteIva.");
+                    break;
+            }
+        }
+
         static void ExtraerTotales(string text, List<Word> words, List<Word>? totalesLabelLine, Factura result)
         {
+            decimal sinClasificar = 0;
+
             // Variante "en línea": cada etiqueta y su valor comparten renglón, así que quedan
             // adyacentes en el texto reconstruido (ver Union Agrícola).
             var mSubtotal = Regex.Match(text, @"Sub\.\s*Total\s+(" + NUM + ")");
@@ -268,40 +294,101 @@ namespace Soltec.DocParser.Services
                 result.Subtotal = ParseNumeroOZero(mSubtotal.Groups[1].Value);
                 result.ImporteTotal = ParseNumeroOZero(mTotal.Groups[1].Value);
                 result.ImporteNetoGravado = result.Subtotal;
-                result.ImporteIva = result.ImporteTotal - result.Subtotal;
-                if (result.ImporteIva != 0)
-                    result.Advertencias.Add($"El IVA (${result.ImporteIva:F2}) no se discrimina por alícuota en este formato; queda en ImporteIva sin desglosar por %.");
+
+                foreach (Match m in Regex.Matches(text, @"Iva\.\s*(General|\d+(?:[.,]\d+)?)\s+(" + NUM + ")"))
+                    AsignarAlicuota(result, m.Groups[1].Value, ParseNumeroOZero(m.Groups[2].Value), ref sinClasificar);
+
+                result.ImporteIva = result.Iva27 + result.Iva21 + result.Iva105 + result.Iva5 + result.Iva25 + result.Iva0 + sinClasificar;
+                AvisarSiHayDiferenciaSinExplicar(result);
                 return;
             }
 
             // Variante "en tabla": una línea con todas las etiquetas y, en la línea de arriba (más
-            // Top), otra con todos los valores alineados por columna (ver Monte Maíz). Como la
-            // cantidad de columnas intermedias varía (Perc./N.G/Iva. solo si tienen importe), se
-            // toma el primer valor de esa fila como el subtotal neto y el último como el total
-            // final -son las dos columnas fijas que siempre están, en ese orden-.
+            // Top), otra con todos los valores alineados por columna (ver Monte Maíz/Monte Buey).
+            // Se reconstruyen las columnas agrupando las palabras de la línea de etiquetas según
+            // una gramática conocida (las combinaciones posibles de este formato: "Sub. Total",
+            // "Sub. Total 2", "Desc.", "Perc.", "N.G", "Impuestos", "Iva. <alícuota>", "Total"),
+            // y se empareja cada columna con el valor que está en la misma posición de la fila
+            // de valores -no con el primero/último nomás-, para no confundir Percepción/Impuestos
+            // (que no son IVA) con las columnas que sí lo son.
             if (totalesLabelLine != null)
             {
                 var valoresLine = PdfPigExtraction.GroupIntoLines(words, 3.0)
                     .FirstOrDefault(l => l[0].BoundingBox.Top < totalesLabelLine[0].BoundingBox.Top
                                       && l.Count(w => Regex.IsMatch(w.Text, @"^" + NUM + "$")) >= 2);
-                if (valoresLine != null)
+                if (valoresLine == null)
                 {
-                    var valores = valoresLine.Where(w => Regex.IsMatch(w.Text, @"^" + NUM + "$"))
-                        .OrderBy(w => w.BoundingBox.Left).Select(w => w.Text).ToList();
-                    if (valores.Count >= 2)
+                    result.Advertencias.Add("No se pudieron extraer los totales del comprobante.");
+                    return;
+                }
+
+                var valores = valoresLine.Where(w => Regex.IsMatch(w.Text, @"^" + NUM + "$"))
+                    .OrderBy(w => w.BoundingBox.Left).Select(w => w.Text).ToList();
+
+                var etiquetasOrdenadas = totalesLabelLine.OrderBy(w => w.BoundingBox.Left).ToList();
+                var columnas = new List<string>();
+                for (int i = 0; i < etiquetasOrdenadas.Count; i++)
+                {
+                    string t = etiquetasOrdenadas[i].Text;
+                    if (t.Equals("Sub.", StringComparison.OrdinalIgnoreCase))
                     {
-                        result.Subtotal = ParseNumeroOZero(valores.First());
-                        result.ImporteTotal = ParseNumeroOZero(valores.Last());
-                        result.ImporteNetoGravado = result.Subtotal;
-                        result.ImporteIva = result.ImporteTotal - result.Subtotal;
-                        if (result.ImporteIva != 0)
-                            result.Advertencias.Add($"El IVA (${result.ImporteIva:F2}) no se discrimina por alícuota en este formato; queda en ImporteIva sin desglosar por %.");
-                        return;
+                        bool esSegundo = i + 2 < etiquetasOrdenadas.Count && etiquetasOrdenadas[i + 2].Text == "2";
+                        columnas.Add(esSegundo ? "SubTotal2" : "SubTotal1");
+                        i += esSegundo ? 2 : 1;
+                    }
+                    else if (t.Equals("Iva.", StringComparison.OrdinalIgnoreCase) && i + 1 < etiquetasOrdenadas.Count)
+                    {
+                        columnas.Add("Iva:" + etiquetasOrdenadas[i + 1].Text);
+                        i += 1;
+                    }
+                    else if (t.Equals("Total", StringComparison.OrdinalIgnoreCase))
+                    {
+                        columnas.Add("Total");
+                    }
+                    else
+                    {
+                        columnas.Add(t); // Desc. / Perc. / N.G / Impuestos, etc. - no son IVA
                     }
                 }
+
+                if (columnas.Count != valores.Count)
+                {
+                    // La gramática no calzó 1 a 1 con los valores (formato no previsto); se cae
+                    // al criterio más simple -primer valor Subtotal, último Total- para no dejar
+                    // esos dos campos vacíos, pero sin arriesgar a qué alícuota corresponde el resto.
+                    result.Subtotal = ParseNumeroOZero(valores.First());
+                    result.ImporteTotal = ParseNumeroOZero(valores.Last());
+                    result.ImporteNetoGravado = result.Subtotal;
+                    result.ImporteIva = result.ImporteTotal - result.Subtotal;
+                    result.Advertencias.Add("No se pudo relacionar cada columna de totales con su valor (formato no previsto); el IVA no se discrimina por alícuota y queda solo en ImporteIva.");
+                    return;
+                }
+
+                for (int i = 0; i < columnas.Count; i++)
+                {
+                    decimal valor = ParseNumeroOZero(valores[i]);
+                    if (columnas[i] == "SubTotal1") result.Subtotal = valor;
+                    else if (columnas[i] == "Total") result.ImporteTotal = valor;
+                    else if (columnas[i].StartsWith("Iva:")) AsignarAlicuota(result, columnas[i].Substring(4), valor, ref sinClasificar);
+                }
+
+                result.ImporteNetoGravado = result.Subtotal;
+                result.ImporteIva = result.Iva27 + result.Iva21 + result.Iva105 + result.Iva5 + result.Iva25 + result.Iva0 + sinClasificar;
+                AvisarSiHayDiferenciaSinExplicar(result);
+                return;
             }
 
             result.Advertencias.Add("No se pudieron extraer los totales del comprobante.");
+        }
+
+        // Percepción/Impuestos/No Gravado no son IVA, pero sí afectan el Total; si después de
+        // sacar el Subtotal y el IVA clasificado queda una diferencia, se avisa en vez de
+        // dejarla invisible (no se intenta adivinar en qué campo va cada una de esas columnas).
+        static void AvisarSiHayDiferenciaSinExplicar(Factura result)
+        {
+            decimal resto = result.ImporteTotal - result.Subtotal - result.ImporteIva;
+            if (Math.Abs(resto) >= 0.01m)
+                result.Advertencias.Add($"Quedan ${resto:F2} del total sin explicar por Subtotal + IVA (probablemente percepciones/impuestos de este comprobante); revisar manualmente.");
         }
     }
 }
