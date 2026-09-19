@@ -137,20 +137,8 @@ namespace Soltec.DocParser.Services
             else
                 result.Advertencias.Add("No se pudo extraer el CUIT del cliente (receptor).");
 
-            string cuitPropio = Regex.Replace(empresaCuit ?? "", @"\D", "");
-            if (!string.IsNullOrEmpty(result.ReceptorCuit) && result.ReceptorCuit == cuitPropio)
-            {
-                result.EsCompra = true;
-            }
-            else if (!string.IsNullOrEmpty(result.ProveedorCuit) && result.ProveedorCuit == cuitPropio)
-            {
-                result.EsCompra = false;
-                result.Advertencias.Add("El CUIT emisor coincide con el de la propia empresa: este comprobante es una VENTA, no una compra.");
-            }
-            else
-            {
-                result.Advertencias.Add("Ninguno de los CUIT detectados coincide con el CUIT configurado para este cliente. Verificar manualmente si corresponde registrar como compra.");
-            }
+            // La decisión de si es compra o venta se toma centralizada, después de aplicar el QR
+            // (ver QrReconciliation.DecidirEsCompra), porque el QR puede corregir el CUIT emisor/receptor.
 
             var mCae = Regex.Match(text, @"\bCAE\s*:?\s*(\d+)");
             if (mCae.Success) result.Cae = mCae.Groups[1].Value;

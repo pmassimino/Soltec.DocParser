@@ -68,6 +68,13 @@ namespace Soltec.DocParser.Endpoints
                 foreach (var item in resultado.Detalle)
                     DetalleEnriquecimiento.EnriquecerConCtgPesoTarifa(item);
 
+                // El QR de AFIP/ARCA es estándar sin importar qué software generó el comprobante,
+                // así que se usa como fuente principal para Numero/CUIT emisor/Fecha/Total/CAE
+                // (ver QrReconciliation) en vez del texto, que varía por formato.
+                var qr = QrExtraction.TryExtraerQr(bytes, paginaIndex: 0);
+                QrReconciliation.Aplicar(resultado, qr);
+                QrReconciliation.DecidirEsCompra(resultado, tenant.Cuit);
+
                 if (paginas.Count > 1)
                 {
                     resultado.Advertencias.Add($"El PDF tiene {paginas.Count} páginas con contenido distinto entre sí; solo se procesó la primera. Revisar manualmente si hay ítems en páginas adicionales.");
