@@ -18,11 +18,13 @@ namespace Soltec.DocParser.Services
             // El CTG siempre tiene 11 dígitos, pero puede venir con ceros a la izquierda pegados
             // al código de planta (p.ej. "CP-0010-010234396441", donde el CTG real es
             // "10234396441"): se captura de a 11 dígitos después de descartar los ceros que sobren.
-            var mCtg = Regex.Match(texto, @"CP[\s\-:]*\d{2,4}[\s\-]*0*(\d{11})\b", RegexOptions.IgnoreCase);
+            // Entre la etiqueta y el número puede haber un "N°"/"Nº"/"No" (p.ej. "CTG Nº 123...").
+            const string Nro = @"(?:N[°ºo]\.?\s*)?[\s\-:]*";
+            var mCtg = Regex.Match(texto, @"CP[\s\-:]*" + Nro + @"\d{2,4}[\s\-]*0*(\d{11})\b", RegexOptions.IgnoreCase);
             if (!mCtg.Success)
-                mCtg = Regex.Match(texto, @"CTG[\s\-:]*0*(\d{11})\b", RegexOptions.IgnoreCase);
+                mCtg = Regex.Match(texto, @"CTG[\s\-:]*" + Nro + "0*(\\d{11})\\b", RegexOptions.IgnoreCase);
             if (!mCtg.Success)
-                mCtg = Regex.Match(texto, @"[Cc]arta\s+de\s+[Pp]orte[\s\-:]*0*(\d{11})\b");
+                mCtg = Regex.Match(texto, @"[Cc]arta\s+de\s+[Pp]orte[\s\-:]*" + Nro + "0*(\\d{11})\\b");
             if (mCtg.Success)
                 detalle.Ctg = mCtg.Groups[1].Value;
 
