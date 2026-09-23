@@ -1,3 +1,4 @@
+using SkiaSharp;
 using Tesseract;
 
 namespace Soltec.DocParser.Services
@@ -15,6 +16,12 @@ namespace Soltec.DocParser.Services
     {
         static string? _tessdataDir;
 
+        // Una imagen chica (p.ej. una captura de pantalla o una foto muy comprimida) da mucho
+        // peor resultado del que da Tesseract si se la agranda antes -se probó contra un caso
+        // real: 633x885 dio 65% de confianza promedio, agrandada a 2532x3540 dio 87% y el texto
+        // pasó de ilegible a casi perfecto-. Una foto de celular que ya viene grande no se toca.
+        const int LadoMinimoObjetivo = 3000;
+
         public static void Configurar(string tessdataDir) => _tessdataDir = tessdataDir;
 
         public static ExtractedPage ExtraerDeImagen(byte[] imageBytes)
@@ -22,8 +29,10 @@ namespace Soltec.DocParser.Services
             if (_tessdataDir == null)
                 throw new InvalidOperationException("OcrExtraction.Configurar(tessdataDir) no fue llamado al iniciar la app.");
 
+            byte[] bytesParaOcr = AgrandarSiEsChica(imageBytes);
+
             using var engine = new TesseractEngine(_tessdataDir, "spa", EngineMode.Default);
-            using var img = Pix.LoadFromMemory(imageBytes);
+            using var img = Pix.LoadFromMemory(bytesParaOcr);
             using var page = engine.Process(img);
 
             var words = new List<PositionedWord>();
@@ -34,6 +43,11 @@ namespace Soltec.DocParser.Services
                 {
                     if (!iter.TryGetBoundingBox(PageIteratorLevel.Word, out var rect)) continue;
                     string texto = iter.GetText(PageIteratorLevel.Word)?.Trim() ?? "";
+                    // Las líneas de borde de una tabla suelen leerse como caracteres sueltos de
+                    // este tipo, pegados a la palabra de al lado (p.ej. "¡Código", "Producto|") -
+                    // nunca son texto real de una factura, así que se descartan en el origen en
+                    // vez de tener que tolerarlos en cada regex de cada parser por separado.
+                    texto = System.Text.RegularExpressions.Regex.Replace(texto, @"[|¡¦│┃‖]", "").Trim();
                     if (texto.Length == 0) continue;
 
                     // Tesseract da coordenadas de imagen (Y crece hacia abajo, origen arriba a la
@@ -59,6 +73,33 @@ namespace Soltec.DocParser.Services
             var lineText = string.Join("\n", lines.Select(l => string.Join(" ", l.OrderBy(w => w.BoundingBox.Left).Select(w => w.Text))));
 
             return new ExtractedPage { LineText = lineText, Words = words };
+        }
+
+        static byte[] AgrandarSiEsChica(byte[] imageBytes)
+        {
+            try
+            {
+                using var original = SKBitmap.Decode(imageBytes);
+                if (original == null) return imageBytes;
+
+                int ladoMayor = Math.Max(original.Width, original.Height);
+                if (ladoMayor >= LadoMinimoObjetivo) return imageBytes;
+
+                double factor = (double)LadoMinimoObjetivo / ladoMayor;
+                int nuevoAncho = (int)(original.Width * factor);
+                int nuevoAlto = (int)(original.Height * factor);
+
+                using var agrandada = original.Resize(new SKImageInfo(nuevoAncho, nuevoAlto), SKFilterQuality.High);
+                if (agrandada == null) return imageBytes;
+
+                using var image = SKImage.FromBitmap(agrandada);
+                using var data = image.Encode(SKEncodedImageFormat.Png, 100);
+                return data.ToArray();
+            }
+            catch
+            {
+                return imageBytes; // si algo falla agrandando, se sigue con la original
+            }
         }
     }
 }

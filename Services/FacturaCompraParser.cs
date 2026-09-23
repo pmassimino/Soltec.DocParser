@@ -125,7 +125,12 @@ namespace Soltec.DocParser.Services
             var mTablaIdx = Regex.Match(text, @"C[oó]digo Producto\s*/\s*Servicio");
             int idxTabla = mTablaIdx.Success ? mTablaIdx.Index : -1;
             string receptorSection = idxTabla > idxReceptor ? text.Substring(idxReceptor, idxTabla - idxReceptor) : text.Substring(idxReceptor);
-            string itemsSection = idxTabla >= 0 ? text.Substring(idxTabla) : "";
+            // Si no se encontró el encabezado de la tabla (p.ej. OCR de una imagen de baja
+            // calidad, donde justo esa fila -con líneas de borde y texto chico- suele salir mal
+            // leída), igual se busca Subtotal/IVA/Total/CAE en el resto del texto: esas etiquetas
+            // no aparecen en el bloque emisor/receptor, así que no hay riesgo de falso positivo, y
+            // no tiene sentido perder TODOS los totales solo porque la tabla de ítems no se ubicó.
+            string itemsSection = idxTabla >= 0 ? text.Substring(idxTabla) : text.Substring(idxReceptor);
 
             // Límite compartido para todas las capturas de esta zona: la tabla es de 2 columnas
             // (emisor/receptor) y, según el PDF, un campo puede terminar compartiendo la misma
