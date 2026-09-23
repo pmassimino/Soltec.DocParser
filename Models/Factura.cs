@@ -87,5 +87,11 @@ namespace Soltec.DocParser.Models
         // true si el texto vino de OCR (imagen escaneada) en vez del texto embebido del PDF;
         // en ese caso la confiabilidad es menor y siempre debería revisarse a mano.
         public bool ObtenidoPorOcr { get; set; }
+
+        // true si este resultado no vino del parser por reglas sino del fallback por IA (ver
+        // AiExtraction): se usa solo cuando el caller lo pide explícitamente y el parser por
+        // reglas no pudo sacar ítems ni totales. Menos predecible que el parser por reglas -
+        // siempre debería revisarse a mano antes de confiar en los datos.
+        public bool ObtenidoPorIa { get; set; }
     }
 }

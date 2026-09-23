@@ -35,6 +35,32 @@ namespace Soltec.DocParser.Endpoints
             return resultado;
         }
 
+        // Fallback opcional (ver AiExtraction): si el caller pasó ?usarIaSiFalla=true y el parser
+        // por reglas no sacó ni ítems ni totales, se le manda el documento original a Claude en
+        // vez de conformarse con un resultado vacío. Si la IA tampoco puede o no está configurada,
+        // se devuelve el resultado del parser por reglas igual, con el motivo del fallo agregado.
+        static async Task<Factura> AplicarFallbackIaSiHaceFalta(Factura resultado, bool usarIaSiFalla, byte[] bytesParaIa, string mediaType, string empresaCuit, QrData? qr)
+        {
+            if (!usarIaSiFalla || !AiExtraction.EsResultadoPobre(resultado))
+                return resultado;
+
+            var erroresIa = new List<string>();
+            var resultadoIa = await AiExtraction.ExtraerAsync(bytesParaIa, mediaType, erroresIa);
+            if (resultadoIa == null)
+            {
+                resultado.Advertencias.AddRange(erroresIa);
+                return resultado;
+            }
+
+            foreach (var item in resultadoIa.Detalle)
+                DetalleEnriquecimiento.EnriquecerConCtgPesoTarifa(item);
+            QrReconciliation.Aplicar(resultadoIa, qr);
+            QrReconciliation.DecidirEsCompra(resultadoIa, empresaCuit);
+            resultadoIa.ObtenidoPorIa = true;
+            resultadoIa.Advertencias.Insert(0, "El parser por reglas no pudo extraer ítems ni totales de este comprobante; este resultado viene del fallback por IA (Claude), no del parser habitual. Revisar cuidadosamente antes de usarlo.");
+            return resultadoIa;
+        }
+
         public static void MapFacturaCompraEndpoints(this WebApplication app)
         {
             app.MapPost("/api/facturas/compra/pdf", async (HttpRequest request) =>
@@ -85,6 +111,9 @@ namespace Soltec.DocParser.Endpoints
                 var qr = QrExtraction.TryExtraerQr(bytes, paginaIndex: 0);
                 QrReconciliation.Aplicar(resultado, qr);
                 QrReconciliation.DecidirEsCompra(resultado, tenant.Cuit);
+
+                bool usarIaSiFalla = string.Equals(request.Query["usarIaSiFalla"], "true", StringComparison.OrdinalIgnoreCase);
+                resultado = await AplicarFallbackIaSiHaceFalta(resultado, usarIaSiFalla, bytes, "application/pdf", tenant.Cuit, qr);
 
                 if (paginas.Count > 1)
                 {
@@ -148,6 +177,15 @@ namespace Soltec.DocParser.Endpoints
                 var qr = QrExtraction.TryExtraerQrDeImagen(bytes);
                 QrReconciliation.Aplicar(resultado, qr);
                 QrReconciliation.DecidirEsCompra(resultado, tenant.Cuit);
+
+                bool usarIaSiFalla = string.Equals(request.Query["usarIaSiFalla"], "true", StringComparison.OrdinalIgnoreCase);
+                if (usarIaSiFalla && AiExtraction.EsResultadoPobre(resultado))
+                {
+                    string extension = Path.GetExtension(file.FileName);
+                    var (bytesParaIa, mediaType) = AiExtraction.PrepararImagen(bytes, extension);
+                    resultado = await AplicarFallbackIaSiHaceFalta(resultado, usarIaSiFalla, bytesParaIa, mediaType, tenant.Cuit, qr);
+                    if (resultado.ObtenidoPorIa) resultado.ObtenidoPorOcr = true;
+                }
 
                 return Results.Ok(resultado);
             })

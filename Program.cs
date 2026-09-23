@@ -11,6 +11,9 @@ builder.Services.Configure<List<TenantOptions>>(builder.Configuration.GetSection
 var app = builder.Build();
 
 OcrExtraction.Configurar(Path.Combine(app.Environment.ContentRootPath, "tessdata"));
+AiExtraction.Configurar(
+    builder.Configuration["Anthropic:ApiKey"],
+    builder.Configuration["Anthropic:Modelo"]);
 
 if (app.Environment.IsDevelopment())
 {
