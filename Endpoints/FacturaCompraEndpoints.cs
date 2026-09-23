@@ -60,6 +60,8 @@ namespace Soltec.DocParser.Endpoints
                     resultado = FacturaGravadoParser.Parse(primera.LineText, primera.Words, tenant.Cuit);
                 else if (FacturaSubTotalParser.EsFormatoSubTotal(primera.LineText))
                     resultado = FacturaSubTotalParser.Parse(primera.LineText, primera.Words, tenant.Cuit);
+                else if (FacturaNetoParser.EsFormatoNeto(primera.LineText))
+                    resultado = FacturaNetoParser.Parse(primera.LineText, primera.Words, tenant.Cuit);
                 else
                     resultado = SaeFacturaParser.Parse(primera.LineText, primera.Words, tenant.Cuit);
 
