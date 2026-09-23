@@ -46,15 +46,7 @@ namespace Soltec.DocParser.Services
                 try
                 {
                     using SKBitmap bitmap = Conversion.ToImage(pdfBytes, page: paginaIndex, options: new RenderOptions(Dpi: dpi));
-                    var reader = new BarcodeReader<SKBitmap>(bmp => new SKBitmapLuminanceSource(bmp))
-                    {
-                        Options = new ZXing.Common.DecodingOptions
-                        {
-                            PossibleFormats = new List<BarcodeFormat> { BarcodeFormat.QR_CODE },
-                            TryHarder = true,
-                        }
-                    };
-                    texto = reader.Decode(bitmap)?.Text;
+                    texto = DecodificarQrDeBitmap(bitmap);
                 }
                 catch
                 {
@@ -63,6 +55,48 @@ namespace Soltec.DocParser.Services
                 if (!string.IsNullOrEmpty(texto)) break;
             }
 
+            return TextoAQrData(texto);
+        }
+
+        // Para una foto/imagen (no PDF): decodifica directo, y si no lo encuentra prueba
+        // agrandando la imagen (una foto de celular puede tener el QR chico en relación al resto).
+        public static QrData? TryExtraerQrDeImagen(byte[] imageBytes)
+        {
+            string? texto;
+            try
+            {
+                using var original = SKBitmap.Decode(imageBytes);
+                if (original == null) return null;
+                texto = DecodificarQrDeBitmap(original);
+                if (string.IsNullOrEmpty(texto))
+                {
+                    using var agrandado = original.Resize(new SKSizeI(original.Width * 2, original.Height * 2), SKFilterQuality.High);
+                    if (agrandado != null) texto = DecodificarQrDeBitmap(agrandado);
+                }
+            }
+            catch
+            {
+                return null;
+            }
+
+            return TextoAQrData(texto);
+        }
+
+        static string? DecodificarQrDeBitmap(SKBitmap bitmap)
+        {
+            var reader = new BarcodeReader<SKBitmap>(bmp => new SKBitmapLuminanceSource(bmp))
+            {
+                Options = new ZXing.Common.DecodingOptions
+                {
+                    PossibleFormats = new List<BarcodeFormat> { BarcodeFormat.QR_CODE },
+                    TryHarder = true,
+                }
+            };
+            return reader.Decode(bitmap)?.Text;
+        }
+
+        static QrData? TextoAQrData(string? texto)
+        {
             if (string.IsNullOrEmpty(texto)) return null;
 
             var mParam = Regex.Match(texto, @"[?&]p=([A-Za-z0-9+/=_-]+)");
