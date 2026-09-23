@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Soltec.DocParser.Models;
-using UglyToad.PdfPig.Content;
 
 namespace Soltec.DocParser.Services
 {
@@ -48,7 +47,7 @@ namespace Soltec.DocParser.Services
             result.Ivas.Add(new ImporteConId { Id = "IVA21", Importe = importe });
         }
 
-        public static Factura Parse(string lineText, List<Word> words, string empresaCuit)
+        public static Factura Parse(string lineText, List<PositionedWord> words, string empresaCuit)
         {
             var result = new Factura { TipoComprobante = "FACTURA" };
             var lineas = lineText.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList();

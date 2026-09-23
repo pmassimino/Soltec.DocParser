@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Soltec.DocParser.Models;
-using UglyToad.PdfPig.Content;
 
 namespace Soltec.DocParser.Services
 {
@@ -62,7 +61,7 @@ namespace Soltec.DocParser.Services
                 && Regex.IsMatch(text, @"C[oó]digo Producto\s*/\s*Servicio");
         }
 
-        public static Factura Parse(string lineText, List<Word> words, string empresaCuit)
+        public static Factura Parse(string lineText, List<PositionedWord> words, string empresaCuit)
         {
             var result = new Factura();
 
@@ -219,7 +218,7 @@ namespace Soltec.DocParser.Services
             return result;
         }
 
-        static void ExtraerItems(List<Word> words, Factura result)
+        static void ExtraerItems(List<PositionedWord> words, Factura result)
         {
             var lines = PdfPigExtraction.GroupIntoLines(words, 3.0);
 

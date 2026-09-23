@@ -21,18 +21,26 @@ namespace Soltec.DocParser.Services
     public class ExtractedPage
     {
         public string LineText { get; set; } = "";
-        public List<Word> Words { get; set; } = new();
+        public List<PositionedWord> Words { get; set; } = new();
     }
 
-    // Extracción de texto/tabla basada en las coordenadas (x,y) reales de cada palabra del PDF
-    // (via PdfPig), en vez de depender del orden en que el texto quedó codificado en el archivo.
-    // Esto es lo que permite separar de forma confiable la columna de "Producto/Servicio" -que
-    // suele partirse en varias líneas- de las columnas numéricas de la fila de datos.
+    // Extracción de texto/tabla basada en las coordenadas (x,y) reales de cada palabra de la
+    // página (de PdfPig, para PDF con texto embebido, o de OCR, para imágenes -ver
+    // OcrExtraction-), en vez de depender del orden en que el texto quedó codificado. Esto es lo
+    // que permite separar de forma confiable la columna de "Producto/Servicio" -que suele
+    // partirse en varias líneas- de las columnas numéricas de la fila de datos, sin importar cuál
+    // de las dos fuentes dio las palabras: todo lo de acá para abajo trabaja sobre PositionedWord.
     public static class PdfPigExtraction
     {
         public static ExtractedPage ExtractPage(Page page)
         {
-            var words = page.GetWords().ToList();
+            var words = page.GetWords()
+                .Select(w => new PositionedWord
+                {
+                    Text = w.Text,
+                    BoundingBox = new WordBox { Left = w.BoundingBox.Left, Top = w.BoundingBox.Top, Right = w.BoundingBox.Right, Bottom = w.BoundingBox.Bottom }
+                })
+                .ToList();
             var lines = GroupIntoLines(words);
             var lineText = string.Join("\n", lines.Select(l => string.Join(" ", l.OrderBy(w => w.BoundingBox.Left).Select(w => w.Text))));
             return new ExtractedPage { LineText = lineText, Words = words };
@@ -61,17 +69,17 @@ namespace Soltec.DocParser.Services
 
         // Agrupa palabras en "líneas visuales" según su coordenada Top, tolerando pequeñas
         // diferencias de línea base entre fuentes/tamaños dentro de la misma fila.
-        public static List<List<Word>> GroupIntoLines(List<Word> words, double tolerance = 3.0)
+        public static List<List<PositionedWord>> GroupIntoLines(List<PositionedWord> words, double tolerance = 3.0)
         {
             var sorted = words.OrderByDescending(w => w.BoundingBox.Top).ToList();
-            var lines = new List<List<Word>>();
+            var lines = new List<List<PositionedWord>>();
             foreach (var w in sorted)
             {
                 var line = lines.LastOrDefault();
                 if (line != null && Math.Abs(line[0].BoundingBox.Top - w.BoundingBox.Top) <= tolerance)
                     line.Add(w);
                 else
-                    lines.Add(new List<Word> { w });
+                    lines.Add(new List<PositionedWord> { w });
             }
             return lines;
         }
@@ -80,13 +88,13 @@ namespace Soltec.DocParser.Services
         // reales de cada palabra. tablaTop/tablaBottom acotan la franja de la página donde vive
         // la tabla (desde la línea de encabezado de columnas hasta la línea de "Subtotal:"/
         // "Importe..."), ambas inclusive.
-        public static List<ItemRow> ExtractItemRows(List<Word> words, double tablaTop, double tablaBottom)
+        public static List<ItemRow> ExtractItemRows(List<PositionedWord> words, double tablaTop, double tablaBottom)
         {
             var enTabla = words.Where(w => w.BoundingBox.Top <= tablaTop && w.BoundingBox.Top >= tablaBottom).ToList();
 
             // Ancla cada columna a la posición X de inicio de su etiqueta de encabezado.
             var headerAnchors = new List<(string label, double left)>();
-            void AddAnchor(string label, Func<Word, bool> match)
+            void AddAnchor(string label, Func<PositionedWord, bool> match)
             {
                 var w = enTabla.FirstOrDefault(match);
                 if (w != null) headerAnchors.Add((label, w.BoundingBox.Left));

@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Soltec.DocParser.Models;
-using UglyToad.PdfPig.Content;
 
 namespace Soltec.DocParser.Services
 {
@@ -71,7 +70,7 @@ namespace Soltec.DocParser.Services
             else result.OtrosTributos.Add(new ImporteConId { Id = id, Importe = importe });
         }
 
-        public static Factura Parse(string lineText, List<Word> words, string empresaCuit)
+        public static Factura Parse(string lineText, List<PositionedWord> words, string empresaCuit)
         {
             var result = new Factura { TipoComprobante = "FACTURA" };
             string text = Regex.Replace(lineText, @"\s+", " ").Trim();

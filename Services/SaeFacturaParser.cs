@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Soltec.DocParser.Models;
-using UglyToad.PdfPig.Content;
 
 namespace Soltec.DocParser.Services
 {
@@ -70,7 +69,7 @@ namespace Soltec.DocParser.Services
         // SAE, pero no rechaza un PDF solo porque no las encuentre -intenta extraer lo que pueda
         // reconocer (Numero, CAE, fechas, CUIT, etc. usan patrones bastante genéricos) y deja
         // advertencias explícitas por cada campo que no encuentra, en vez de negarse a intentarlo.
-        public static Factura Parse(string lineText, List<Word> words, string empresaCuit)
+        public static Factura Parse(string lineText, List<PositionedWord> words, string empresaCuit)
         {
             var result = new Factura();
             string text = Regex.Replace(lineText, @"\s+", " ").Trim();
@@ -157,7 +156,7 @@ namespace Soltec.DocParser.Services
             return result;
         }
 
-        static void ExtraerItemsYTotales(string text, List<Word> words, Factura result)
+        static void ExtraerItemsYTotales(string text, List<PositionedWord> words, Factura result)
         {
             var lines = PdfPigExtraction.GroupIntoLines(words, 3.0);
 
@@ -177,7 +176,7 @@ namespace Soltec.DocParser.Services
             var enTabla = words.Where(w => w.BoundingBox.Top < tablaTop && w.BoundingBox.Top > tablaBottom).ToList();
 
             var headerAnchors = new List<(string label, double left)>();
-            void AddAnchor(string label, Func<Word, bool> match)
+            void AddAnchor(string label, Func<PositionedWord, bool> match)
             {
                 var w = headerLine.FirstOrDefault(match);
                 if (w != null) headerAnchors.Add((label, w.BoundingBox.Left));
@@ -277,7 +276,7 @@ namespace Soltec.DocParser.Services
             else result.OtrosTributos.Add(new ImporteConId { Id = id, Importe = importe });
         }
 
-        static void ExtraerTotales(string text, List<Word> words, List<Word>? totalesLabelLine, Factura result)
+        static void ExtraerTotales(string text, List<PositionedWord> words, List<PositionedWord>? totalesLabelLine, Factura result)
         {
             // Variante "en línea": cada etiqueta y su valor comparten renglón, así que quedan
             // adyacentes en el texto reconstruido (ver Union Agrícola).
