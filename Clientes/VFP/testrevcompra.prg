@@ -1,0 +1,1 @@
+DO C:\Proyectos\Soltec.DocParser\Clientes\vfp\revcompra.prg WITH "http://localhost:5037", "dev-local-key", "c:\cereales\datos\", "d:\sae\datos\"

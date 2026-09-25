@@ -4,7 +4,7 @@ using Soltec.DocParser.Models;
 
 namespace Soltec.DocParser.Services
 {
-    // Cuarto formato de factura visto (primero en APSA Internacional S.A.), distinto de ARCA,
+    // Cuarto formato de factura visto, distinto de ARCA,
     // SAE y "Gravado/Exento": etiquetas propias ("C.U.I.T.:" con puntos para el emisor, "CUIT:"
     // sin puntos para el receptor -al revés que en los otros formatos-, sin ninguna etiqueta tipo
     // "Cliente"/"Sres:" antes del nombre del receptor), fechas con puntos ("20.08.2026") o en
@@ -75,7 +75,7 @@ namespace Soltec.DocParser.Services
             else result.Ivas.Add(new ImporteConId { Id = id, Importe = importe });
         }
 
-        public static Factura Parse(string lineText, List<PositionedWord> words, string empresaCuit)
+        public static Factura Parse(string lineText, List<PositionedWord> words)
         {
             var result = new Factura { TipoComprobante = "FACTURA" };
             var lineas = lineText.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
@@ -151,9 +151,6 @@ namespace Soltec.DocParser.Services
             {
                 result.Advertencias.Add("No se pudo extraer el nombre del cliente (posicional, sin etiqueta).");
             }
-
-            // La decisión de si es compra o venta se toma centralizada, después de aplicar el QR
-            // (ver QrReconciliation.DecidirEsCompra), porque el QR puede corregir el CUIT emisor/receptor.
 
             // ---- Totales ----
             var mSubtotal = Regex.Match(text, @"SUB TOTAL\s*\$\s*(" + NUM + ")");

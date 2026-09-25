@@ -7,9 +7,5 @@ namespace Soltec.DocParser.Tenancy
     {
         public string ApiKey { get; set; } = "";
         public string Nombre { get; set; } = "";
-
-        // CUIT propio del cliente (sin guiones). Se usa para decidir si un comprobante
-        // es una compra (el cliente es el receptor) o no.
-        public string Cuit { get; set; } = "";
     }
 }

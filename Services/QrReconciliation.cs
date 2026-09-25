@@ -99,27 +99,5 @@ namespace Soltec.DocParser.Services
 
             return qrValue.Value.ToString().PadLeft(padDefault, '0');
         }
-
-        // Se decide acá, una sola vez y después de aplicar el QR, si el comprobante es una compra
-        // para el tenant -antes esta lógica estaba duplicada (con el mismo texto) en cada uno de
-        // los 4 parsers, y podía quedar contradicha si el QR corregía el CUIT emisor/receptor
-        // después de que el parser ya había decidido con un valor viejo.
-        public static void DecidirEsCompra(Factura factura, string empresaCuit)
-        {
-            string cuitPropio = System.Text.RegularExpressions.Regex.Replace(empresaCuit ?? "", @"\D", "");
-            if (!string.IsNullOrEmpty(factura.ReceptorCuit) && factura.ReceptorCuit == cuitPropio)
-            {
-                factura.EsCompra = true;
-            }
-            else if (!string.IsNullOrEmpty(factura.ProveedorCuit) && factura.ProveedorCuit == cuitPropio)
-            {
-                factura.EsCompra = false;
-                factura.Advertencias.Add("El CUIT emisor coincide con el de la propia empresa: este comprobante es una VENTA, no una compra.");
-            }
-            else
-            {
-                factura.Advertencias.Add("Ninguno de los CUIT detectados coincide con el CUIT configurado para este cliente. Verificar manualmente si corresponde registrar como compra.");
-            }
-        }
     }
 }

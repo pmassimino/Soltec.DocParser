@@ -54,9 +54,6 @@ namespace Soltec.DocParser.Models
         public string ReceptorCuit { get; set; } = "";
         public string ReceptorRazonSocial { get; set; } = "";
 
-        // true si el CUIT receptor coincide con el CUIT propio del tenant (=> es una compra a registrar)
-        public bool EsCompra { get; set; }
-
         public decimal Subtotal { get; set; }
         public decimal ImporteNetoGravado { get; set; }
 

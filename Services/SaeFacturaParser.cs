@@ -10,9 +10,9 @@ namespace Soltec.DocParser.Services
     // emisor -por eso la detección y la extracción del emisor son genéricas, nunca un CUIT fijo.
     //
     // Se vieron 2 variantes de layout para los totales (probablemente por versión del reporte):
-    //  - "en línea": cada etiqueta y su valor están en el mismo renglón visual (Union Agrícola).
+    //  - "en línea": cada etiqueta y su valor están en el mismo renglón visual.
     //  - "en tabla": todas las etiquetas van en un renglón y todos los valores en el siguiente,
-    //    alineados por columna (Monte Maíz). Se intenta la primera y, si no da resultado, la segunda.
+    //    alineados por columna. Se intenta la primera y, si no da resultado, la segunda.
     //
     // También hay una variante más vieja de encabezado ("Señor/es" / "CUIT N°" / "Tipo 1" en vez
     // de "Cliente" / "C.U.I.T" / "Cod. NN") que permite varios ítems con IVA distinto por línea;
@@ -69,7 +69,7 @@ namespace Soltec.DocParser.Services
         // SAE, pero no rechaza un PDF solo porque no las encuentre -intenta extraer lo que pueda
         // reconocer (Numero, CAE, fechas, CUIT, etc. usan patrones bastante genéricos) y deja
         // advertencias explícitas por cada campo que no encuentra, en vez de negarse a intentarlo.
-        public static Factura Parse(string lineText, List<PositionedWord> words, string empresaCuit)
+        public static Factura Parse(string lineText, List<PositionedWord> words)
         {
             var result = new Factura();
             string text = Regex.Replace(lineText, @"\s+", " ").Trim();
@@ -135,9 +135,6 @@ namespace Soltec.DocParser.Services
                 result.ReceptorCuit = mReceptorCuit.Groups[1].Success ? mReceptorCuit.Groups[1].Value : mReceptorCuit.Groups[2].Value;
             else
                 result.Advertencias.Add("No se pudo extraer el CUIT del cliente (receptor).");
-
-            // La decisión de si es compra o venta se toma centralizada, después de aplicar el QR
-            // (ver QrReconciliation.DecidirEsCompra), porque el QR puede corregir el CUIT emisor/receptor.
 
             var mCae = Regex.Match(text, @"\bCAE\s*:?\s*(\d+)");
             if (mCae.Success) result.Cae = mCae.Groups[1].Value;
@@ -279,7 +276,7 @@ namespace Soltec.DocParser.Services
         static void ExtraerTotales(string text, List<PositionedWord> words, List<PositionedWord>? totalesLabelLine, Factura result)
         {
             // Variante "en línea": cada etiqueta y su valor comparten renglón, así que quedan
-            // adyacentes en el texto reconstruido (ver Union Agrícola).
+            // adyacentes en el texto reconstruido.
             var mSubtotal = Regex.Match(text, @"Sub\.\s*Total\s+(" + NUM + ")");
             var mTotal = Regex.Match(text, @"(?<!Sub\.\s)Total\s+(" + NUM + ")");
             if (mSubtotal.Success && mTotal.Success)
@@ -305,7 +302,7 @@ namespace Soltec.DocParser.Services
             }
 
             // Variante "en tabla": una línea con todas las etiquetas y, en la línea de arriba (más
-            // Top), otra con todos los valores alineados por columna (ver Monte Maíz/Monte Buey).
+            // Top), otra con todos los valores alineados por columna.
             // Se reconstruyen las columnas agrupando las palabras de la línea de etiquetas según
             // una gramática conocida (las combinaciones posibles de este formato: "Sub. Total",
             // "Sub. Total 2", "Desc.", "Perc.", "N.G", "Impuestos", "Iva. <alícuota>", "Total"),

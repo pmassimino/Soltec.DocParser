@@ -61,7 +61,7 @@ namespace Soltec.DocParser.Services
                 && Regex.IsMatch(text, @"C[oó]digo Producto\s*/\s*Servicio");
         }
 
-        public static Factura Parse(string lineText, List<PositionedWord> words, string empresaCuit)
+        public static Factura Parse(string lineText, List<PositionedWord> words)
         {
             var result = new Factura();
 
@@ -179,9 +179,6 @@ namespace Soltec.DocParser.Services
             else result.Advertencias.Add("No se pudo extraer la Razón Social del receptor.");
 
             if (cuitReceptor == null) result.Advertencias.Add("No se pudo extraer el CUIT del receptor.");
-
-            // La decisión de si es compra o venta se toma centralizada, después de aplicar el QR
-            // (ver QrReconciliation.DecidirEsCompra), porque el QR puede corregir el CUIT emisor/receptor.
 
             // ---- Totales ----
             decimal GetImporte(string label, string src)

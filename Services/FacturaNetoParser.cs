@@ -4,7 +4,7 @@ using Soltec.DocParser.Models;
 
 namespace Soltec.DocParser.Services
 {
-    // Quinto formato de factura visto (primero en Atiseni S.A.S.), distinto de ARCA, SAE,
+    // Quinto formato de factura visto, distinto de ARCA, SAE,
     // "Gravado/Exento" y "SUB TOTAL/TOTAL": encabezado "FACTURA VENTA", "Punto Venta"/"N°" sin
     // punto después de "Punto", "Cliente:" para el receptor, tabla de ítems "Código Artículo
     // Denominación Pcio.Unit. Cant. % D/R SubTotal", y totales en una sola fila de 5 columnas
@@ -47,7 +47,7 @@ namespace Soltec.DocParser.Services
             result.Ivas.Add(new ImporteConId { Id = "IVA21", Importe = importe });
         }
 
-        public static Factura Parse(string lineText, List<PositionedWord> words, string empresaCuit)
+        public static Factura Parse(string lineText, List<PositionedWord> words)
         {
             var result = new Factura { TipoComprobante = "FACTURA" };
             var lineas = lineText.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
@@ -103,9 +103,6 @@ namespace Soltec.DocParser.Services
             var mReceptorCuit = Regex.Match(text, @"N[°º]\s*CUIT:\s*([\d-]{11,13})");
             if (mReceptorCuit.Success) result.ReceptorCuit = Regex.Replace(mReceptorCuit.Groups[1].Value, @"\D", "");
             else result.Advertencias.Add("No se pudo extraer el CUIT del cliente (receptor).");
-
-            // La decisión de si es compra o venta se toma centralizada, después de aplicar el QR
-            // (ver QrReconciliation.DecidirEsCompra).
 
             // ---- CAE ----
             var mCae = Regex.Match(text, @"CAE N[°º]:\s*(\d+)");

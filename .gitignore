@@ -3,3 +3,5 @@ obj/
 .vs/
 *.user
 appsettings.Development.json
+*.FXP
+*.fxp

@@ -5,7 +5,7 @@ using Soltec.DocParser.Models;
 namespace Soltec.DocParser.Services
 {
     // Parser para un tercer formato de factura (visto por primera vez en comprobantes de
-    // AGRIPUERTO S.A., de acopio/servicios de granos), distinto tanto de ARCA/AFIP como del
+    // un proveedor de acopio/servicios de granos), distinto tanto de ARCA/AFIP como del
     // formato SAE: usa sus propias etiquetas ("Sres:" en vez de "Cliente"/"Apellido y Nombre",
     // "I.V.A.:"/"Cond. Vta.:", tabla de ítems "Artículo Descripción Cantidad U.M. Alicuota IVA
     // Precio Importe", totales "Gravado/Exento/IVA Inscripto al X%/Perc. I.B./Perc. I.V.A./Total").
@@ -70,7 +70,7 @@ namespace Soltec.DocParser.Services
             else result.OtrosTributos.Add(new ImporteConId { Id = id, Importe = importe });
         }
 
-        public static Factura Parse(string lineText, List<PositionedWord> words, string empresaCuit)
+        public static Factura Parse(string lineText, List<PositionedWord> words)
         {
             var result = new Factura { TipoComprobante = "FACTURA" };
             string text = Regex.Replace(lineText, @"\s+", " ").Trim();
@@ -136,9 +136,6 @@ namespace Soltec.DocParser.Services
                 result.Advertencias.Add("No se pudo extraer el CUIT del cliente (receptor).");
             if (string.IsNullOrEmpty(result.ProveedorCuit))
                 result.Advertencias.Add("No se pudo extraer el CUIT del emisor.");
-
-            // La decisión de si es compra o venta se toma centralizada, después de aplicar el QR
-            // (ver QrReconciliation.DecidirEsCompra), porque el QR puede corregir el CUIT emisor/receptor.
 
             // ---- Totales ----
             var mGravado = Regex.Match(text, @"Gravado\s*\$\s*(" + NUM + ")");
