@@ -115,11 +115,11 @@ de tokens, por modelo o prefijo de modelo). Si un modelo no tiene precio configu
 `GET /api/admin/uso?desde=AAAA-MM-DD&hasta=AAAA-MM-DD` (ambas inclusive; por defecto los últimos
 30 días) devuelve totales, uso por cliente (frecuencia, días activos, último uso, costo), por
 proveedor/modelo de IA, por día, por hora del día y por resultado. Es para el administrador, no
-para los clientes: no usa el JWT sino el header `X-Admin-Key` con el valor de `Uso:AdminApiKey`
+para los clientes: no usa el JWT sino el header `ApiKey` con el valor de `Uso:ApiKey`
 (si está vacía, el endpoint responde 404).
 
 ```bash
-curl "http://localhost:5037/api/admin/uso?desde=2026-10-01&hasta=2026-10-31" -H "X-Admin-Key: $ADMIN_KEY"
+curl "http://localhost:5037/api/admin/uso?desde=2026-10-01&hasta=2026-10-31" -H "ApiKey: $ADMIN_KEY"
 ```
 
 ## Requisitos
@@ -152,7 +152,7 @@ En `appsettings.json`, o en `appsettings.Development.json` para desarrollo local
     "Uso": "Data Source=Data/uso.db"
   },
   "Uso": {
-    "AdminApiKey": "",
+    "ApiKey": "",
     "ZonaHoraria": "America/Argentina/Buenos_Aires",
     "PreciosIa": {
       "claude-sonnet-5": { "EntradaPorMillon": 2.00, "EntradaCachePorMillon": 0.20, "SalidaPorMillon": 10.00 },

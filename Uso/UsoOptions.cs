@@ -3,8 +3,8 @@ namespace Soltec.DocParser.Uso
     // Sección "Uso" de appsettings.
     public sealed class UsoOptions
     {
-        // Clave para GET /api/admin/uso (header X-Admin-Key). Vacía = endpoint deshabilitado.
-        public string AdminApiKey { get; set; } = "";
+        // Clave para GET /api/admin/uso (header ApiKey). Vacía = endpoint deshabilitado.
+        public string ApiKey { get; set; } = "";
 
         // Zona horaria en la que se agrupan las estadísticas por día y por hora.
         public string ZonaHoraria { get; set; } = "America/Argentina/Buenos_Aires";

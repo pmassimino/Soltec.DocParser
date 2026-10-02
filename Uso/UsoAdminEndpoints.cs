@@ -6,10 +6,10 @@ namespace Soltec.DocParser.Uso
 {
     // Estadísticas de uso para el administrador del servicio (no para los clientes): carga,
     // frecuencia de uso por cliente, cuánto se delega a la IA y cuánto cuesta. No usa el JWT de
-    // Soltec.Suscripcion sino una clave propia (Uso:AdminApiKey) en el header X-Admin-Key.
+    // Soltec.Suscripcion sino una clave propia (Uso:ApiKey) en el header ApiKey.
     public static class UsoAdminEndpoints
     {
-        const string HeaderAdminKey = "X-Admin-Key";
+        const string HeaderApiKey = "ApiKey";
         const int MaxDiasRango = 366;
 
         public static void MapUsoAdminEndpoints(this WebApplication app)
@@ -29,28 +29,28 @@ namespace Soltec.DocParser.Uso
                 return Results.Ok(await estadisticas.ObtenerAsync(desdeEfectivo, hastaEfectivo, cancellationToken));
             })
             .AllowAnonymous()
-            .AddEndpointFilter<AdminApiKeyFilter>();
+            .AddEndpointFilter<ApiKeyFilter>();
         }
 
-        sealed class AdminApiKeyFilter : IEndpointFilter
+        sealed class ApiKeyFilter : IEndpointFilter
         {
             private readonly IOptionsMonitor<UsoOptions> _options;
 
-            public AdminApiKeyFilter(IOptionsMonitor<UsoOptions> options)
+            public ApiKeyFilter(IOptionsMonitor<UsoOptions> options)
             {
                 _options = options;
             }
 
             public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
             {
-                string esperada = _options.CurrentValue.AdminApiKey;
+                string esperada = _options.CurrentValue.ApiKey;
                 // Sin clave configurada el endpoint no existe, en vez de quedar abierto.
                 if (string.IsNullOrEmpty(esperada))
                     return Results.NotFound();
 
-                string recibida = context.HttpContext.Request.Headers[HeaderAdminKey].ToString();
+                string recibida = context.HttpContext.Request.Headers[HeaderApiKey].ToString();
                 if (!CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(recibida), Encoding.UTF8.GetBytes(esperada)))
-                    return Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: $"Falta o es incorrecto el header {HeaderAdminKey}.");
+                    return Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: $"Falta o es incorrecto el header {HeaderApiKey}.");
 
                 return await next(context);
             }
