@@ -31,7 +31,8 @@ de gestión.
   directamente con `XMLAdapter`.
 - **Render de páginas**: devuelve una página del comprobante como PNG o JPG, para mostrarla
   junto a los datos extraídos en un formulario de revisión.
-- **Multi-tenant**: cada cliente se autentica con su propia API key.
+- **Autenticación con Soltec.Suscripcion**: cada cliente hace login en Soltec.Suscripcion y
+  usa ese token; solo se atiende a cuentas con la suscripción vigente.
 
 ## Endpoints
 
@@ -41,8 +42,27 @@ de gestión.
 | POST | `/api/facturas/compra/imagen` | Procesa una foto o escaneo (jpg, png, bmp, webp, tiff) |
 | POST | `/api/facturas/compra/pagina` | Renderiza una página del PDF o de la imagen como PNG/JPG |
 | GET  | `/api/health` | Health check (no requiere autenticación) |
+| GET  | `/api/admin/uso` | Estadísticas de uso para el administrador (ver [Registro de uso](#registro-de-uso)) |
 
-Los `POST` reciben el archivo como `multipart/form-data` y requieren el header `ApiKey`.
+Los `POST` reciben el archivo como `multipart/form-data` y requieren el header
+`Authorization: Bearer <token>`.
+
+### Autenticación
+
+1. El cliente hace `POST {Suscripcion}/api/login` con `{ "nombre": "...", "password": "..." }`
+   (en SAE, el usuario y contraseña de `Empresas\SettingGlobal`) y recibe `{ "token": "..." }`.
+   El token dura 1 día; al recibir un 401 hay que volver a hacer login.
+2. DocParser valida el token localmente (firma, issuer, audience, vencimiento) con la misma
+   `Jwt:Key` que Soltec.Suscripcion.
+3. Luego consulta `GET {Suscripcion}/api/suscripcion/estado/plan` con el mismo token (cacheado
+   `CacheMinutos` por usuario) y exige una suscripción en `ACTIVO` o `AVISO` del plan
+   `IdPlanRequerido` (3 = Soltec.DocParse; 0 = cualquier plan).
+
+| Respuesta | Motivo |
+|-----------|--------|
+| 401 | Sin token, token inválido o vencido |
+| 403 | La cuenta no tiene la suscripción vigente |
+| 503 | No se pudo consultar Soltec.Suscripcion |
 
 ### Parámetros de query
 
@@ -51,7 +71,7 @@ Los `POST` reciben el archivo como `multipart/form-data` y requieren el header `
 | Parámetro | Valores | Descripción |
 |---|---|---|
 | `formato` | `xml` | Responde en XML para VFP. Si se omite, la respuesta es JSON. |
-| `usarIaSiFalla` | `true` | Activa el fallback por IA cuando el parser por reglas no extrae nada útil. |
+| `usarIaSiFalla` | `false` | El fallback por IA está activo por defecto si hay una API key configurada; con `false` se desactiva para esa llamada. Se activa cuando el parser no puede determinar número, punto de venta, letra, tipo, fecha, total, detalle o CUIT del proveedor o CUIT del receptor. |
 
 `/pagina`:
 
@@ -76,6 +96,32 @@ La API **no valida** si el comprobante corresponde al cliente que lo envía. Ext
 emisor y del receptor, y la decisión de si se trata de una compra queda del lado del sistema
 que consume la API.
 
+## Registro de uso
+
+Cada llamada a `/pdf` e `/imagen` queda registrada en una base SQLite (`Data/uso.db` por
+defecto), haya salido bien o no:
+
+- `RegistrosUso`: una fila por comprobante, con el cliente (`IdUsuario` y nombre del token), tipo
+  de archivo (`PDF`/`IMAGEN`), resultado (`OK`, el código de error o `HTTP_400`), duración, si se
+  delegó a la IA, qué proveedor lo resolvió y el total de tokens y costo de IA.
+- `RegistrosUsoIa`: una fila por cada llamada a una API de IA (incluidos los reintentos y los
+  proveedores que fallaron, que también se cobran), con modelo, tokens de entrada/caché/salida y
+  costo en USD.
+
+El costo se calcula al momento de la llamada con los precios de `Uso:PreciosIa` (USD por millón
+de tokens, por modelo o prefijo de modelo). Si un modelo no tiene precio configurado se registra en
+0 y queda un warning en el log. La base se crea y migra sola al arrancar la API.
+
+`GET /api/admin/uso?desde=AAAA-MM-DD&hasta=AAAA-MM-DD` (ambas inclusive; por defecto los últimos
+30 días) devuelve totales, uso por cliente (frecuencia, días activos, último uso, costo), por
+proveedor/modelo de IA, por día, por hora del día y por resultado. Es para el administrador, no
+para los clientes: no usa el JWT sino el header `X-Admin-Key` con el valor de `Uso:AdminApiKey`
+(si está vacía, el endpoint responde 404).
+
+```bash
+curl "http://localhost:5037/api/admin/uso?desde=2026-10-01&hasta=2026-10-31" -H "X-Admin-Key: $ADMIN_KEY"
+```
+
 ## Requisitos
 
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
@@ -88,12 +134,30 @@ En `appsettings.json`, o en `appsettings.Development.json` para desarrollo local
 
 ```json
 {
-  "Tenants": [
-    { "ApiKey": "tu-api-key", "Nombre": "Nombre del cliente" }
-  ],
+  "Suscripcion": {
+    "UrlService": "https://host-de-suscripcion",
+    "IdPlanRequerido": 3,
+    "CacheMinutos": 10,
+    "Jwt": {
+      "Key": "la misma Jwt:Key de Soltec.Suscripcion",
+      "Issuer": "Soltec.Suscripcion",
+      "Audience": "Soltec.Suscripcion"
+    }
+  },
   "Anthropic": {
     "ApiKey": "",
     "Modelo": "claude-sonnet-5"
+  },
+  "ConnectionStrings": {
+    "Uso": "Data Source=Data/uso.db"
+  },
+  "Uso": {
+    "AdminApiKey": "",
+    "ZonaHoraria": "America/Argentina/Buenos_Aires",
+    "PreciosIa": {
+      "claude-sonnet-5": { "EntradaPorMillon": 2.00, "EntradaCachePorMillon": 0.20, "SalidaPorMillon": 10.00 },
+      "deepseek-flash": { "EntradaPorMillon": 0.30, "EntradaCachePorMillon": 0.006, "SalidaPorMillon": 1.20 }
+    }
   }
 }
 ```
@@ -102,7 +166,7 @@ Si `Anthropic:ApiKey` está vacía, el fallback por IA queda desactivado y la re
 en `Advertencias`.
 
 > No subas API keys reales al repositorio. `appsettings.Development.json` ya está en
-> `.gitignore`. En producción conviene usar variables de entorno (`Anthropic__ApiKey`) o un
+> `.gitignore`. En producción conviene usar variables de entorno (`Anthropic__ApiKey`, `Suscripcion__Jwt__Key`) o un
 > gestor de secretos.
 
 ## Ejecución
@@ -118,7 +182,7 @@ Ejemplo:
 
 ```bash
 curl -X POST "http://localhost:5037/api/facturas/compra/pdf?formato=xml" \
-  -H "ApiKey: tu-api-key" \
+  -H "Authorization: Bearer $TOKEN" \
   -F "file=@factura.pdf"
 ```
 
@@ -130,7 +194,8 @@ El archivo `Soltec.DocParser.http` tiene requests de ejemplo para Visual Studio 
 Endpoints/   Definición de los endpoints (Minimal API)
 Models/      Modelo de salida (Factura, ítems, importes)
 Services/    Extracción (PdfPig, OCR, QR), parsers por formato, fallback por IA, serializador XML para VFP
-Tenancy/     Autenticación por API key y configuración de tenants
+Tenancy/     Autenticación contra Soltec.Suscripcion (JWT + estado de suscripción)
+Uso/         Registro de uso por cliente (EF Core + SQLite) y estadísticas para el administrador
 Clientes/    Cliente de ejemplo en Visual FoxPro
 tessdata/    Datos de idioma de Tesseract
 ```

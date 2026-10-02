@@ -20,6 +20,7 @@ namespace Soltec.DocParser.Services
         public long? NroCmp { get; set; }
         public decimal? Importe { get; set; }
         public string? Moneda { get; set; }
+        public decimal? Cotizacion { get; set; }
         public DateTime? Fecha { get; set; }
         public string? TipoDocRec { get; set; }
         public string? NroDocRec { get; set; }
@@ -145,6 +146,8 @@ namespace Soltec.DocParser.Services
                 TryLeer(root, "nroCmp", result.CamposInvalidos, v => result.NroCmp = (long)v.GetDouble());
                 TryLeer(root, "importe", result.CamposInvalidos, v => result.Importe = v.GetDecimal());
                 TryLeer(root, "moneda", result.CamposInvalidos, v => result.Moneda = v.GetString());
+                TryLeer(root, "ctz", result.CamposInvalidos, v => result.Cotizacion = v.ValueKind == JsonValueKind.String
+                    ? decimal.Parse(v.GetString()!, System.Globalization.CultureInfo.InvariantCulture) : v.GetDecimal());
                 TryLeer(root, "fecha", result.CamposInvalidos, v => result.Fecha = DateTime.Parse(v.GetString()!));
                 TryLeer(root, "tipoDocRec", result.CamposInvalidos, v => result.TipoDocRec = ((int)v.GetDouble()).ToString());
                 TryLeer(root, "nroDocRec", result.CamposInvalidos, v => result.NroDocRec = NumeroLargoATexto(v));
@@ -175,6 +178,7 @@ namespace Soltec.DocParser.Services
             var nroCmp = Buscar("nroCmp"); if (nroCmp != null && long.TryParse(nroCmp, out var nc)) result.NroCmp = nc; else if (nroCmp != null) result.CamposInvalidos.Add("nroCmp");
             var importe = Buscar("importe"); if (importe != null && decimal.TryParse(importe, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var imp)) result.Importe = imp; else if (importe != null) result.CamposInvalidos.Add("importe");
             var moneda = Buscar("moneda"); if (moneda != null) result.Moneda = moneda;
+            var ctz = Buscar("ctz"); if (ctz != null && decimal.TryParse(ctz, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var cz)) result.Cotizacion = cz;
             var tipoDocRec = Buscar("tipoDocRec"); if (tipoDocRec != null) result.TipoDocRec = tipoDocRec;
             var nroDocRec = Buscar("nroDocRec"); if (nroDocRec != null) result.NroDocRec = nroDocRec;
             var codAut = Buscar("codAut"); if (codAut != null) result.CodAut = codAut;

@@ -56,7 +56,8 @@ namespace Soltec.DocParser.Services
             C("prvcuit", 11), C("prvrsoc", 100), C("prvdomic", 150), C("prvciva", 40), C("prviibb", 20),
             C("reccuit", 11), C("recrsoc", 100),
             N("subtotal", 15, 2), N("netograv", 15, 2), N("impiva", 15, 2), N("otrostrib", 15, 2), N("total", 15, 2),
-            C("cae", 14), D("fvtocae"), L("porocr"), L("poria"),
+            C("moneda", 3), N("cotizacion", 15, 6),
+            C("cae", 14), D("fvtocae"), L("porocr"), L("poria"), C("iaprov", 15),
         };
 
         static readonly Campo[] CamposDetalle =
@@ -90,7 +91,8 @@ namespace Soltec.DocParser.Services
                         f.ProveedorCuit, f.ProveedorRazonSocial, f.ProveedorDomicilio, f.ProveedorCondicionIva, f.ProveedorIngresosBrutos,
                         f.ReceptorCuit, f.ReceptorRazonSocial,
                         f.Subtotal, f.ImporteNetoGravado, f.ImporteIva, f.TotalOtrosTributos, f.ImporteTotal,
-                        f.Cae, f.FechaVtoCae, f.ObtenidoPorOcr, f.ObtenidoPorIa,
+                        f.Moneda, f.Cotizacion,
+                        f.Cae, f.FechaVtoCae, f.ObtenidoPorOcr, f.ObtenidoPorIa, f.ProveedorIa,
                     },
                 }),
                 new("detalle", CamposDetalle, f.Detalle.Select((d, i) => new object?[]

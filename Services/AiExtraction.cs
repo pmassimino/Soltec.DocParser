@@ -34,6 +34,57 @@ namespace Soltec.DocParser.Services
         public static bool EsResultadoPobre(Factura f) =>
             f.Detalle.Count == 0 && f.Subtotal == 0 && f.ImporteNetoGravado == 0 && f.Ivas.Count == 0;
 
+        // Campos imprescindibles para registrar el comprobante que el parser por reglas (más el
+        // QR) no pudo determinar. Si falta alguno, vale la pena escalar a la IA; vacío = el
+        // resultado alcanza. No incluye datos que legítimamente pueden faltar (período, vto de
+        // pago, IIBB, bonificaciones) ni el CAE (los comprobantes no electrónicos no lo traen).
+        public static List<string> CamposFaltantes(Factura f)
+        {
+            var faltan = new List<string>();
+            if (string.IsNullOrWhiteSpace(f.Numero) || f.Numero.All(c => c == '0')) faltan.Add("número");
+            if (string.IsNullOrWhiteSpace(f.PuntoVenta) || f.PuntoVenta.All(c => c == '0')) faltan.Add("punto de venta");
+            if (string.IsNullOrWhiteSpace(f.Letra)) faltan.Add("letra");
+            if (string.IsNullOrWhiteSpace(f.TipoComprobante)) faltan.Add("tipo de comprobante");
+            if (f.FechaEmision == null) faltan.Add("fecha de emisión");
+            if (f.ImporteTotal == 0) faltan.Add("importe total");
+            if (f.Detalle.Count == 0) faltan.Add("detalle");
+            if (string.IsNullOrWhiteSpace(f.ProveedorCuit)) faltan.Add("CUIT del proveedor");
+            if (string.IsNullOrWhiteSpace(f.ReceptorCuit)) faltan.Add("CUIT del receptor");
+            return faltan;
+        }
+
+        // Completa con lo que sí extrajo el parser por reglas (o el QR) los campos de encabezado
+        // que la IA dejó vacíos, para no perder datos buenos al reemplazar el resultado.
+        public static void CompletarDesde(Factura ia, Factura reglas)
+        {
+            static string V(string ia, string reglas) => string.IsNullOrWhiteSpace(ia) ? reglas : ia;
+            ia.TipoComprobante = V(ia.TipoComprobante, reglas.TipoComprobante);
+            ia.CodigoComprobante = V(ia.CodigoComprobante, reglas.CodigoComprobante);
+            ia.Letra = V(ia.Letra, reglas.Letra);
+            ia.PuntoVenta = V(ia.PuntoVenta, reglas.PuntoVenta);
+            ia.Numero = V(ia.Numero, reglas.Numero);
+            ia.CondicionVenta = V(ia.CondicionVenta, reglas.CondicionVenta);
+            ia.ProveedorCuit = V(ia.ProveedorCuit, reglas.ProveedorCuit);
+            ia.ProveedorRazonSocial = V(ia.ProveedorRazonSocial, reglas.ProveedorRazonSocial);
+            ia.ProveedorDomicilio = V(ia.ProveedorDomicilio, reglas.ProveedorDomicilio);
+            ia.ProveedorCondicionIva = V(ia.ProveedorCondicionIva, reglas.ProveedorCondicionIva);
+            ia.ProveedorIngresosBrutos = V(ia.ProveedorIngresosBrutos, reglas.ProveedorIngresosBrutos);
+            ia.ReceptorCuit = V(ia.ReceptorCuit, reglas.ReceptorCuit);
+            ia.ReceptorRazonSocial = V(ia.ReceptorRazonSocial, reglas.ReceptorRazonSocial);
+            ia.Cae = V(ia.Cae, reglas.Cae);
+            ia.FechaEmision ??= reglas.FechaEmision;
+            ia.FechaVencimientoPago ??= reglas.FechaVencimientoPago;
+            ia.PeriodoFacturadoDesde ??= reglas.PeriodoFacturadoDesde;
+            ia.PeriodoFacturadoHasta ??= reglas.PeriodoFacturadoHasta;
+            ia.FechaVtoCae ??= reglas.FechaVtoCae;
+            if (ia.ImporteTotal == 0) ia.ImporteTotal = reglas.ImporteTotal;
+            if (ia.Subtotal == 0) ia.Subtotal = reglas.Subtotal;
+            if (ia.ImporteNetoGravado == 0) ia.ImporteNetoGravado = reglas.ImporteNetoGravado;
+            if (ia.Ivas.Count == 0) ia.Ivas = reglas.Ivas;
+            if (ia.OtrosTributos.Count == 0) ia.OtrosTributos = reglas.OtrosTributos;
+            if (ia.Detalle.Count == 0) ia.Detalle = reglas.Detalle;
+        }
+
         // Claude solo acepta image/jpeg, image/png, image/gif o image/webp -los otros formatos
         // que el endpoint de imagen admite (bmp, tiff) se re-codifican a PNG antes de mandarlos.
         public static (byte[] bytes, string mediaType) PrepararImagen(byte[] bytes, string extension)
@@ -54,7 +105,8 @@ namespace Soltec.DocParser.Services
             return (data.ToArray(), "image/png");
         }
 
-        public static async Task<Factura?> ExtraerAsync(byte[] bytes, string mediaType, List<string> erroresIa)
+        // llamadas: acá se agrega el intento con los tokens consumidos, para el registro de uso.
+        public static async Task<Factura?> ExtraerAsync(byte[] bytes, string mediaType, List<string> erroresIa, List<LlamadaIa> llamadas)
         {
             if (!Disponible)
             {
@@ -62,6 +114,8 @@ namespace Soltec.DocParser.Services
                 return null;
             }
 
+            var llamada = new LlamadaIa { Proveedor = IaFallback.Claude, Modelo = _modelo };
+            llamadas.Add(llamada);
             try
             {
                 bool esPdf = mediaType == "application/pdf";
@@ -114,6 +168,7 @@ namespace Soltec.DocParser.Services
                 }
 
                 using var doc = JsonDocument.Parse(raw);
+                LeerUso(doc.RootElement, llamada);
                 var bloques = doc.RootElement.GetProperty("content").EnumerateArray();
                 var toolUse = bloques.FirstOrDefault(b => b.GetProperty("type").GetString() == "tool_use");
                 if (toolUse.ValueKind != JsonValueKind.Object)
@@ -122,13 +177,27 @@ namespace Soltec.DocParser.Services
                     return null;
                 }
 
-                return MapearFactura(toolUse.GetProperty("input"));
+                var factura = MapearFactura(toolUse.GetProperty("input"));
+                llamada.Exitosa = true;
+                return factura;
             }
             catch (Exception ex)
             {
                 erroresIa.Add("El fallback por IA falló: " + ex.Message);
                 return null;
             }
+        }
+
+        // En la API de Anthropic input_tokens no incluye lo leído/escrito en caché: se suma todo
+        // para que TokensEntrada sea el total, y la lectura de caché queda aparte para el costo.
+        static void LeerUso(JsonElement respuesta, LlamadaIa llamada)
+        {
+            llamada.LeerModelo(respuesta);
+            if (!respuesta.TryGetProperty("usage", out var uso)) return;
+            int cacheLectura = LlamadaIa.LeerEntero(uso, "cache_read_input_tokens");
+            llamada.TokensEntrada = LlamadaIa.LeerEntero(uso, "input_tokens") + cacheLectura + LlamadaIa.LeerEntero(uso, "cache_creation_input_tokens");
+            llamada.TokensEntradaCache = cacheLectura;
+            llamada.TokensSalida = LlamadaIa.LeerEntero(uso, "output_tokens");
         }
 
         static string Truncar(string s) => s.Length > 300 ? s[..300] + "..." : s;
@@ -165,7 +234,8 @@ namespace Soltec.DocParser.Services
             return result;
         }
 
-        static Factura MapearFactura(JsonElement input)
+        // Compartido con DeepSeekExtraction: los dos proveedores devuelven el mismo JSON.
+        internal static Factura MapearFactura(JsonElement input)
         {
             var f = new Factura
             {
@@ -191,9 +261,13 @@ namespace Soltec.DocParser.Services
                 Ivas = Lista(input, "ivas"),
                 OtrosTributos = Lista(input, "otrosTributos"),
                 ImporteTotal = Dec(input, "importeTotal"),
+                Moneda = string.Equals(Str(input, "moneda"), "USD", StringComparison.OrdinalIgnoreCase) ? "USD" : "ARS",
+                Cotizacion = Dec(input, "cotizacion"),
                 Cae = Str(input, "cae") ?? "",
                 FechaVtoCae = Fecha(input, "fechaVtoCae"),
             };
+
+            if (f.Moneda == "ARS") f.Cotizacion = 1m;
 
             if (input.TryGetProperty("detalle", out var detalleArr) && detalleArr.ValueKind == JsonValueKind.Array)
             {
@@ -220,6 +294,10 @@ namespace Soltec.DocParser.Services
 
             return f;
         }
+
+        // Solo el JSON Schema de la factura (sin el envoltorio de herramienta de Claude), para los
+        // proveedores que reciben el esquema en el prompt (DeepSeekExtraction).
+        internal static readonly string EsquemaFacturaJson = JsonNode.Parse(ToolSchemaJson)!["input_schema"]!.ToJsonString();
 
         const string ToolSchemaJson = """
         {
@@ -272,6 +350,8 @@ namespace Soltec.DocParser.Services
                 }
               },
               "importeTotal": { "type": "number" },
+              "moneda": { "type": "string", "description": "USD solo si el comprobante dice expresamente que está hecho en dólares; en cualquier otro caso ARS" },
+              "cotizacion": { "type": "number", "description": "Cotización/tipo de cambio en pesos por dólar que informa el comprobante; 1 si es en pesos, 0 si es en dólares y no la informa" },
               "cae": { "type": "string" },
               "fechaVtoCae": { "type": "string", "description": "AAAA-MM-DD" },
               "detalle": {
