@@ -62,6 +62,23 @@ namespace Soltec.DocParser.Services
                 factura.ImporteTotal = qr.Importe.Value;
             }
 
+            // El QR informa la moneda con el código AFIP ("PES" pesos, "DOL" dólar). Solo "DOL" se
+            // toma como dólares; cualquier otra moneda no soportada se deja tal como estaba.
+            if (string.Equals(qr.Moneda, "DOL", StringComparison.OrdinalIgnoreCase))
+            {
+                factura.Moneda = "USD";
+                if (qr.Cotizacion is > 0) factura.Cotizacion = qr.Cotizacion.Value;
+            }
+            else if (string.Equals(qr.Moneda, "PES", StringComparison.OrdinalIgnoreCase))
+            {
+                if (factura.Moneda == "USD")
+                    factura.Advertencias.Add("Moneda: el texto indicaba dólares pero el QR dice pesos; se usa la del QR.");
+                factura.Moneda = "ARS";
+                factura.Cotizacion = 1m;
+            }
+            else if (!string.IsNullOrEmpty(qr.Moneda))
+                factura.Advertencias.Add($"Moneda: el QR trae la moneda '{qr.Moneda}', que no es pesos ni dólares; verificar manualmente.");
+
             if (!string.IsNullOrEmpty(qr.CodAut))
             {
                 if (!string.IsNullOrEmpty(factura.Cae) && factura.Cae != qr.CodAut)

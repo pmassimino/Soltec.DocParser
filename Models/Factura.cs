@@ -72,6 +72,15 @@ namespace Soltec.DocParser.Models
         public decimal TotalOtrosTributos => OtrosTributos.Sum(o => o.Importe);
         public decimal ImporteTotal { get; set; }
 
+        // Moneda en la que está hecha la factura: "ARS" (pesos, por defecto) o "USD" (dólares).
+        // Solo es "USD" si el comprobante lo dice explícitamente (texto o QR de ARCA); sin esa
+        // evidencia se asume pesos. Los importes están en la moneda del comprobante.
+        public string Moneda { get; set; } = "ARS";
+
+        // Cotización de la divisa (pesos por 1 unidad de la moneda) informada en el comprobante;
+        // 1 si es en pesos. 0 si es en dólares pero el comprobante no informa la cotización.
+        public decimal Cotizacion { get; set; } = 1m;
+
         public string Cae { get; set; } = "";
         public DateTime? FechaVtoCae { get; set; }
 
@@ -90,5 +99,9 @@ namespace Soltec.DocParser.Models
         // reglas no pudo sacar ítems ni totales. Menos predecible que el parser por reglas -
         // siempre debería revisarse a mano antes de confiar en los datos.
         public bool ObtenidoPorIa { get; set; }
+
+        // Qué IA resolvió el comprobante ("DeepSeek" o "Claude") cuando ObtenidoPorIa = true;
+        // vacío si vino del parser por reglas.
+        public string ProveedorIa { get; set; } = "";
     }
 }

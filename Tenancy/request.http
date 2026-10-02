@@ -1,0 +1,43 @@
+@url=https://dev.suscripcion.soltec-net.com.ar
+@urlDocParser=http://localhost:5037
+@ApiKey = pgH7QzFHJx4w46fI~5Uzi4RvtTwlEXp
+
+### Estados - Login
+# @name Login
+POST {{url}}/api/login
+Content-Type: application/json
+
+{"nombre":"abmfertilizantes","password":"activasol"}
+### Guardar el token en una variable
+@authToken = {{Login.response.body.token}}
+
+### EstadoSuscripcion - Obtener todas
+# @name Estado
+GET {{url}}/api/Suscripcion/estado
+Authorization: Bearer {{authToken}} 
+
+
+### EstadoSuscripcion - Obtener todas
+# @name EstadoPlan
+GET {{url}}/api/Suscripcion/estado/plan
+Authorization: Bearer {{authToken}} 
+
+
+### Subir factura PDF
+# @name FacturaPdf
+POST {{urlDocParser}}/api/facturas/compra/pdf
+Authorization: Bearer {{authToken}}
+Content-Type: multipart/form-data; boundary=boundary123
+
+--boundary123
+Content-Disposition: form-data; name="file"; filename="20374394402_001_00002_00000080.pdf"
+Content-Type: application/pdf
+
+< C:/tmp/leones/20374394402_001_00002_00000080.pdf
+--boundary123--
+
+### Uso - Obtener todas
+# @name Uso
+GET {{urlDocParser}}/api/admin/uso?desde=2026-10-01&hasta=2026-10-31
+ApiKey:{{ApiKey}} 
+
